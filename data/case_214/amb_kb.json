@@ -1,0 +1,28 @@
+{
+  "ambiguities": [
+    {
+      "id": "1_D2_cross_join_all_pairs",
+      "kind": "Multi-table alignment",
+      "node_id": "cross_join",
+      "op": "join",
+      "source_text": "Append the Branch information to the Customer information",
+      "ref": "Cross join to get all branch-customer pairs for distance calculation"
+    },
+    {
+      "id": "2_O1_clip_acos_inner_range",
+      "kind": "Operation boundary",
+      "node_id": "distance_calc",
+      "op": "project",
+      "source_text": "Calculate the distance between the customers and their nearest branch (in miles)",
+      "ref": "Clip inner product to [-1, 1] before acos to handle floating point errors"
+    },
+    {
+      "id": "3_O3_priority_tie_break_by_customer",
+      "kind": "Operation inconsistent",
+      "node_id": "sort_for_priority",
+      "op": "sort",
+      "source_text": "For each Branch, assign a Customer Priority rating, the closest customer having a rating of 1",
+      "ref": "Tie-break by Customer name when distances are equal"
+    }
+  ]
+}

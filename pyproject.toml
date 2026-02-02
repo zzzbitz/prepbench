@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ambiguity-tool"
+version = "0.0.0"
+description = "Ambiguity analysis and auto-ETL experiment runner"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+  "Jinja2>=3.1",
+  "numpy>=1.25",
+  "outlines>=0.0.0",
+  "pandas>=2.1",
+  "pydantic>=2.0",
+  "PyYAML>=6.0",
+  "requests>=2.31",
+]
+
+[project.optional-dependencies]
+dev = []
+
+[tool.setuptools]
+packages = [
+  "agents",
+  "config",
+  "core",
+  "core.schemas",
+  "data_synthesis",
+  "evaluate",
+  "llm_connect",
+  "py2flow",
+  "py2flow.operators",
+]

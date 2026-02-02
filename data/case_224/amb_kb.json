@@ -1,0 +1,52 @@
+{
+  "ambiguities": [
+    {
+      "id": "1_D2_join_on_student_name",
+      "kind": "Multi-table alignment",
+      "node_id": "join",
+      "op": "join",
+      "source_text": "First we must join the test score data set and the additional class attendance data set",
+      "ref": "Join on student_name"
+    },
+    {
+      "id": "2_O2_join_type_inner_only_matches",
+      "kind": "Operation incomplete",
+      "node_id": "join",
+      "op": "join",
+      "source_text": "First we must join the test score data set and the additional class attendance data set",
+      "ref": "Inner join - only keep students in both datasets"
+    },
+    {
+      "id": "3_O2_scores_header_second_row",
+      "kind": "Operation incomplete",
+      "node_id": "input_scores",
+      "op": "input",
+      "intent": "Parse scores file with header on second row (skip first row).",
+      "ref": "header=1"
+    },
+    {
+      "id": "4_C2_testscoreinteger_half_up_rounding",
+      "kind": "Operation boundary",
+      "node_id": "project_transform",
+      "op": "project",
+      "source_text": "each number is a rounded to the nearest whole number",
+      "ref": "Use half-up rounding (0.5 rounds up)"
+    },
+    {
+      "id": "5_O1_student_name_split_first_underscore",
+      "kind": "Operation boundary",
+      "node_id": "project_transform",
+      "op": "project",
+      "source_text": "We want to separate out the Student's first and last names",
+      "ref": "Split on first underscore: First Name = before, Last Name = after"
+    },
+    {
+      "id": "6_O1_attendance_threshold_boundaries",
+      "kind": "Operation boundary",
+      "node_id": "project_transform",
+      "op": "project",
+      "source_text": "If any student has an attendance percentage less than 70%, flag it as 'Low Attendance'",
+      "ref": ">=0.90=High, >=0.70=Medium, <0.70=Low"
+    }
+  ]
+}

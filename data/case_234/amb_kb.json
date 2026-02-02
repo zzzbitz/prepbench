@@ -1,0 +1,52 @@
+{
+  "ambiguities": [
+    {
+      "id": "1_O2_parse_fail_dob_as_missing",
+      "kind": "Operation incomplete",
+      "node_id": "parse_dob",
+      "op": "project",
+      "intent": "If DOB cannot be parsed, treat it as missing.",
+      "ref": "pd.to_datetime(df['date_of_birth'], errors='coerce')"
+    },
+    {
+      "id": "2_O3_generation_multi_match_first",
+      "kind": "Operation inconsistent",
+      "node_id": "ee_gens_filtered",
+      "op": "filter",
+      "intent": "If an employee matches multiple generation ranges, keep the first match.",
+      "ref": "drop_duplicates(subset=['employee_id', 'month_end_date'], keep='first')"
+    },
+    {
+      "id": "3_D2_generation_bounds_inclusive",
+      "kind": "Operation boundary",
+      "node_id": "ee_gens_filtered",
+      "op": "filter",
+      "source_text": "Join the employee data and generation data to get the generation name for each employee",
+      "ref": "Match birth_year where start_year <= birth_year <= end_year"
+    },
+    {
+      "id": "4_O1_age_full_years_before_birthday",
+      "kind": "Operation boundary",
+      "node_id": "monthly_age",
+      "op": "project",
+      "source_text": "Calculate the employee's age (in full years) as of the month_end_date.",
+      "ref": "Subtract 1 year if as_of date is before birthday in that year"
+    },
+    {
+      "id": "5_O2_age_range_not_provided_when_age_missing",
+      "kind": "Operation incomplete",
+      "node_id": "monthly_age",
+      "op": "project",
+      "intent": "If age is missing, Age Range should be blank/null.",
+      "ref": "if pd.isna(age): return None"
+    },
+    {
+      "id": "6_O2_parse_fail_month_end_date_as_missing",
+      "kind": "Operation incomplete",
+      "node_id": "parse_month_end",
+      "op": "project",
+      "intent": "If month_end_date cannot be parsed, treat as missing.",
+      "ref": "pd.to_datetime(df['month_end_date'], errors='coerce')"
+    }
+  ]
+}

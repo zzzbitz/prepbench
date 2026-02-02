@@ -1,0 +1,28 @@
+{
+  "ambiguities": [
+    {
+      "id": "1_O2_customer_code_cast_to_string",
+      "kind": "Row-level concept",
+      "node_id": "clean_customer_code",
+      "op": "project",
+      "source_text": "Remove the 'customer-' prefix",
+      "ref": "Cast Customer Code to string for prefix removal"
+    },
+    {
+      "id": "2_O2_transaction_date_parse_format",
+      "kind": "Row-level concept",
+      "node_id": "parse_dates",
+      "op": "project",
+      "source_text": "Split up the Transaction Code to identify the bank",
+      "ref": "pd.to_datetime(df['Transaction Date'], format='%d-%b-%Y')"
+    },
+    {
+      "id": "3_O1_transaction_code_bank_split_rule",
+      "kind": "Row-level concept",
+      "node_id": "extract_bank",
+      "op": "project",
+      "source_text": "Split the Transaction Code to extract the letters at the start of the transaction code.",
+      "ref": "Split on first hyphen, Bank = before"
+    }
+  ]
+}

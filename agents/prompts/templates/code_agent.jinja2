@@ -1,0 +1,70 @@
+{#- System Prompt -#}
+{%- block system_prompt -%}
+{{ system_prompt_text }}
+{%- endblock -%}
+
+{#- Guidelines -#}
+{%- if guidelines_text -%}
+{{ guidelines_text }}
+{%- endif -%}
+
+{#- Main User Content -#}
+{%- block user_prompt -%}
+## Task Description
+{{ context.query_md }}
+
+{%- if context.run_mode in ["cleanspec", "profile"] and context.cleanspec_appendix %}
+## CleanSpec Appendix
+This appendix contains required supplemental cleaning operations.
+Apply these rules in addition to the main specification.
+{{ context.cleanspec_appendix }}
+{%- endif %}
+
+## Input Data
+```json
+{
+  "task_dir": "{{ context.task_dir }}",
+  "inputs": {{ context.inputs | tojson }},
+  "inputs_preview": {{ context.inputs_preview | tojson(indent=2) }}
+}
+```
+
+{#- Mode-specific context (interact/e2e vs raw/full) -#}
+{%- block extra_context -%}{%- endblock -%}
+
+
+{#- Feedback Block (if any) -#}
+{%- if feedback -%}
+---
+### Feedback on Previous Attempt
+{%- if feedback.execution and not feedback.execution.ok -%}
+> [!WARNING] 
+> **REPAIR MODE**: Your previous code failed to execute. Fix the error below.
+
+#### Execution Error
+- **Stderr**:
+```
+{{ feedback.execution.stderr }}
+```
+
+{%- if exec_error_instructions %}
+{{ exec_error_instructions }}
+{%- endif -%}
+{%- endif -%}
+
+{#- Previous Code -#}
+{%- if feedback.prev_code -%}
+#### Previous Code (with issues)
+```python
+{{ feedback.prev_code }}
+```
+{%- endif -%}
+
+{%- endif -%}
+
+
+
+
+{#- Final Instruction -#}
+Generate ONLY the `solve` function in a single ```python code block.
+{%- endblock -%}

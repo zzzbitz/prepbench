@@ -1,0 +1,37 @@
+experiment:
+  run_mode: "raw"
+  max_rounds_debug: 3  # Total attempts including initial (e.g., 3 = initial + 2 retries)
+  max_rounds_interact: 3
+  question_ratio: 2.5         # max_questions = ceil(question_ratio * ambiguity_count)
+  max_questions_cap: 25       # Cap max_questions after applying ratio
+  max_questions_per_ask: 10   # Max sub-questions per single Ask
+  timeout: 120
+  parallel_execution: true
+  jobs: 16
+  output_root_template: "@output/{model_info}/{run_mode}/{case_name}"
+
+profile:
+  enabled: true
+  max_rows_per_file: 2000
+  max_top_values: 5
+  max_unique_values: 50
+  max_columns: 80
+  max_column_highlights: 12
+  max_rounds: 2             # Maximum code execution rounds for ProfileAgent
+  max_summary_chars: 4000   # Maximum characters for profile summary
+
+llm:
+  active_provider: "openrouter"
+  default_params:
+    temperature: 0.7
+    max_tokens: 30000
+  providers:
+    openrouter:
+      type: "openrouter"
+      model: "openai/gpt-5.2"
+      # API keys are read from .env / environment variables only.
+
+clarifier:
+  model: "deepseek/deepseek-v3.2"
+  default_params:
+    temperature: 0

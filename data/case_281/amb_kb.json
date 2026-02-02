@@ -1,0 +1,12 @@
+{
+  "ambiguities": [
+    {
+      "id": "1_O2_input_type_coercion",
+      "kind": "Row-level concept",
+      "node_id": "inp",
+      "op": "input",
+      "intent": "Whether to treat all columns as text when reading the input data.",
+      "ref": "df = pd.read_csv(input_path, dtype=str)"
+    }
+  ]
+}

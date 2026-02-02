@@ -1,0 +1,49 @@
+import pandas as pd
+import numpy as np
+from pathlib import Path
+import sys
+import re
+import json
+import math
+from datetime import datetime, timedelta
+from collections import Counter, defaultdict
+from itertools import groupby, chain
+
+# ---- LLM SOLVE START ----
+{{ solve_source }}
+# ---- LLM SOLVE END ----
+
+def _read_inputs() -> dict[str, pd.DataFrame]:
+    in_dir = Path('inputs')
+    tables: dict[str, pd.DataFrame] = {}
+    for p in sorted(in_dir.glob('*.csv')):
+        df = pd.read_csv(p, dtype=str, keep_default_na=False)
+        # 注意：不进行全局 strip，避免改变与 GT 的精确匹配语义
+        tables[p.name] = df
+    return tables
+
+def _validate_and_write(res: dict[str, pd.DataFrame], allowed: list[str]) -> None:
+    cand = Path('cand')
+    cand.mkdir(parents=True, exist_ok=True)
+    # Log returned keys
+    returned_keys = list(res.keys()) if isinstance(res, dict) else None
+    print(f"[solve_template] returned_keys={returned_keys}", file=sys.stderr)
+    # Validate keys match exactly
+    if not isinstance(res, dict):
+        raise TypeError('solve() must return dict[str, DataFrame]')
+    if set(res.keys()) != set(allowed):
+        missing = [x for x in allowed if x not in res]
+        extra = [x for x in res.keys() if x not in allowed]
+        raise ValueError(f'Outputs mismatch. missing={missing}, extra={extra}')
+    for name in allowed:
+        df = res[name]
+        if not isinstance(df, pd.DataFrame):
+            raise TypeError(f'Output {name} is not a DataFrame')
+        print(f"[solve_template] writing {name} rows={len(df)}", file=sys.stderr)
+        df.to_csv(cand / name, index=False, encoding="utf-8")
+
+if __name__ == '__main__':
+    allowed_outputs = {{ allowed_outputs_list }}
+    tables = _read_inputs()
+    result = solve(tables)
+    _validate_and_write(result, allowed_outputs)

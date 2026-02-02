@@ -1,0 +1,213 @@
+system: |
+  You are a senior data engineer translating pandas/Python ETL code into a py2flow DAG.
+
+  Task: convert the given `solution.py` into a single `flow.json` that py2flow can validate and execute to produce the same output CSV files.
+
+  Output ONLY a valid JSON object (the flow.json). No markdown, no explanation, no extra text.
+
+guidelines: |
+  ## Goal and Constraints
+  - Use only `solution.py` and this operator contract.
+  - The DAG must validate and execute under py2flow.
+  - **SCRIPT USAGE GUIDANCE** (length enforced at runtime):
+    • inline_code length ≤ 1500 characters
+    • Script count is not enforced, but should be kept minimal
+    • Use script ONLY as last resort when no standard operators apply
+
+  ## flow.json Schema
+  - Top-level: `id`, `name`, `version` (optional), `nodes`.
+  - `nodes`: node_id -> {kind, inputs?, params?, label?, description?}; no extra keys.
+  - `kind` is lowercase and must be one of: input, project, filter, join, union, aggregate, dedup, sort, pivot, output, script.
+
+  ## Graph Constraints
+  - All referenced input ids exist.
+  - DAG is acyclic.
+  - Every node is reachable from at least one output node.
+
+  ## I/O Contract
+  - Paths are resolved relative to the directory containing flow.json; `..` escapes are rejected.
+  - Read inputs from `inputs/<file>.csv` unless `solution.py` clearly reads a text file; use `input.mode="line"` then.
+  - Write outputs to `flow_cand/<filename>.csv`, matching the filenames produced by `solution.py`.
+  - Do not add sorting or column reordering unless `solution.py` does.
+
+  ## Input Shapes
+  - input: no inputs (omit or `{}`).
+  - Unary kinds (project/filter/aggregate/dedup/sort/pivot/output/script): `{"in": "<node>"}`.
+  - join: `{"left": "<node>", "right": "<node>"}`.
+  - union: `{"items": ["a", "b", ...]}` (len >= 2).
+
+  ## Expression Language
+  - Evaluated with `eval` over: `df`, `pd`, `np`, `re`, `__row_pos`, and safe builtins (len, range, min, max, sum, any, all, sorted, ...).
+  - Columns with safe identifiers can be referenced directly; otherwise use `df['Col']` or backticks: `` `Col` ``.
+  - Forbidden helper names in expressions: `date_range_to_start`, `date_year_only`, `date_parse_multi`, `group_cumcount`.
+  - Predicate-style exprs must return bool or a boolean Series.
+
+  ## Operator Specs (params are strict; unknown keys fail validation)
+
+  ### input
+  Params: path, mode, delimiter, encoding, na_values, keep_default_na, parse_dates, dtype, skiprows, header, on_bad_lines, quotechar, escapechar, data, source_type.
+  - File input: requires `path`; `mode` is "csv" (default) or "line".
+  - `mode="line"` returns a single string column `raw`.
+  - Inline input: set `source_type="inline"` (or provide `data`) with `data` as list[dict] or dict[str, list].
+
+  ### project
+  Forbidden: sort-related params (sort_by, ascending, na_position, order_by, stable, limit).
+  Params: select, rename, compute, cast, map, expand, promote_row_to_header, on_error, error_cols.
+  Order: promote_row_to_header -> select -> rename -> compute -> cast -> map -> expand.
+  - `on_error`: keep|null|error|tag (default error); tag requires `error_cols`.
+  - `select` supports "*" expansion.
+  - `compute`: [{as, expr}].
+  - `cast`: [{col, dtype, errors}] where dtype in string|int64|float64|bool|datetime64[ns], errors in raise|null.
+  - `map` ops: trim, lower, upper, regex_replace, regex_extract, html_strip, squeeze_whitespace, split, tokenize, explode, fillna, map_values, complete_calendar, parse_date_multi, date_range, format_number.
+    - `args.when` optional (not supported for explode/regex_extract/complete_calendar).
+    - regex_replace: pattern, repl (default "").
+    - fillna: value.
+    - map_values: mapping, optional default.
+    - split: pattern, optional regex (bool), keep_empty (bool).
+    - tokenize: pattern, optional to_lower (bool), min_len (int>=1), keep_alnum (bool).
+    - explode: optional pos_col.
+    - complete_calendar: optional format, normalize (bool), freq (default "D").
+    - parse_date_multi: optional formats list, out_fmt string, errors null|raise.
+    - date_range: end_col or end, freq.
+    - format_number: moving (bool).
+    - regex_extract: pattern; optional group (int|str|list), as (string|list), dtype; errors null|raise; flags int or "IGNORECASE|MULTILINE|DOTALL" (aliases I/M/S).
+  - `expand`: keys (list), from_col, expand_col, keep_from_col (bool, default true), and exactly one of to_col | to_value | to_value_expr (expression).
+
+  ### filter
+  Params: predicate (required), null_as_false (bool, default true).
+  - Row-wise comparisons across two columns: use df.apply(...) or a per-row list; do not call vectorized string methods with a Series pattern.
+
+  ### join
+  Params: how, on or left_on/right_on, null_equal, suffixes, select_left, select_right, validate, fuzzy_match.
+  - how: inner|left|right|full|semi|anti (default inner).
+  - fuzzy_match: boolean; only supports single key and how in {left, inner}.
+  - validate: {mode: 1:1|1:m|m:1|m:m, on_fail: error|tag, error_col}.
+
+  ### union
+  Params: distinct (required bool), align ("by_name" only), fill_missing (null|error), type_coerce ("error" only).
+
+  ### aggregate
+  Params: group_keys (list, can be empty), aggs (required list), having (expr), null_group (bool, default true).
+  - aggs item: {as, func, expr?, distinct?}; func in sum|count|min|max|avg|count_distinct|prod.
+  - expr is optional only when func=count; otherwise required.
+
+  ### dedup
+  Params: keys (null or list), output (all_cols|keys_only), keep (first|last|none), order_by (list of {expr, asc, nulls}).
+  - If keys != null and output=all_cols and keep in first/last, order_by must be non-empty.
+
+  ### sort
+  Params: order_by (required list of {expr, asc, nulls}), stable (bool, default true), limit (non-negative int), partition_by (list), limit_per_group (non-negative int).
+
+  ### pivot
+  Params: mode required.
+  - pivot_longer: id_cols (list), value_vars (list), names_to (string), values_to (string).
+  - pivot_wider: index (list), columns (list), values (list), agg (sum|count|min|max|avg), fill_value (default 0).
+  - pivot_longer_from_rows: row_key_pattern (list), column_pattern (list), names_to (string), data_offset (int>=0, default 2), drop_contains (list[str]), numeric_fields (list[str]).
+  - pivot_longer_paired: key_row (int>=0), pair_size (int>=1), key_col_offset (int>=0), value_cols (list), key_col (string), skip_empty_keys (bool, default true), skip_cols (int>=0), id_cols (list[str], optional).
+
+  ### output
+  Params: path (required), write_order (bool), schema_enforce (bool), schema (columns/order/dtype), datetime_format (map), encoding, lineterminator.
+
+  ### script (last resort - STRICT LENGTH LIMIT)
+  **Constraints**: inline_code MUST be ≤1500 chars. Script count is not enforced but should be minimal.
+  Params: deterministic (bool), side_effects (bool), inline_code (string).
+  - inline_code must define: transform(df, pd, np) -> DataFrame.
+  - Allowed import roots: calendar, collections, datetime, decimal, functools, itertools, json, locale, math, numpy, pandas, re, time, _strptime, statistics, string, typing.
+  - Keep inline_code short; prefer standard operators to avoid exceeding limits.
+
+  ## JSON Output Requirement
+  Output ONLY the JSON object (flow.json). No markdown, no explanation.
+
+operator_cookbook: |
+  ## Common Patterns (valid JSON fragments)
+
+  ### Compute then Select (select runs before compute)
+  {
+    "compute_cols": {
+      "kind": "project",
+      "inputs": {"in": "up"},
+      "params": {"compute": [{"as": "new_col", "expr": "df['a'] + df['b']"}]}
+    },
+    "final_cols": {
+      "kind": "project",
+      "inputs": {"in": "compute_cols"},
+      "params": {"select": ["new_col", "a", "b"]}
+    }
+  }
+
+  ### Dedup with Deterministic Tiebreaker
+  {
+    "dedup_latest": {
+      "kind": "dedup",
+      "inputs": {"in": "up"},
+      "params": {
+        "keys": ["user_id"],
+        "keep": "first",
+        "order_by": [{"expr": "df['event_time']", "asc": false, "nulls": "last"}]
+      }
+    }
+  }
+
+  ### Regex Extract into New Column(s)
+  {
+    "extract": {
+      "kind": "project",
+      "inputs": {"in": "up"},
+      "params": {
+        "on_error": "null",
+        "map": [
+          {"col": "raw", "op": "regex_extract", "args": {"pattern": "(?P<num>\\d+)", "group": "num", "as": "num", "dtype": "int64", "errors": "null"}}
+        ]
+      }
+    }
+  }
+
+  ### Pivot Longer
+  {
+    "long": {
+      "kind": "pivot",
+      "inputs": {"in": "wide"},
+      "params": {
+        "mode": "pivot_longer",
+        "id_cols": ["id"],
+        "value_vars": ["a", "b", "c"],
+        "names_to": "variable",
+        "values_to": "value"
+      }
+    }
+  }
+
+  ### Script Node
+  {
+    "custom": {
+      "kind": "script",
+      "inputs": {"in": "up"},
+      "params": {
+        "deterministic": true,
+        "side_effects": false,
+        "inline_code": "def transform(df, pd, np):\n    return df"
+      }
+    }
+  }
+
+exec_error_instructions: |
+  ## Fixing Errors
+
+  The previous flow.json had errors. Fix based on feedback below.
+
+  ### Common Issues
+  - JSON parse errors: invalid escaping inside inline_code.
+  - Unknown params keys: remove them (py2flow rejects unknown keys strictly).
+  - Wrong input shape: unary nodes require `inputs: {"in": ...}`; join uses left/right; union uses items list.
+  - Script node: must include boolean deterministic and side_effects, and inline_code with transform(df, pd, np).
+  - Pivot: use correct mode + required fields (pivot_wider/longer/longer_from_rows/longer_paired).
+  - Aggregate funcs: only sum|count|min|max|avg|count_distinct|prod are allowed.
+  - Dedup: keep first/last with keys and all_cols requires non-empty order_by.
+  - Project: select runs before compute (split into two nodes if needed).
+  - Filter: predicate must return bool or boolean Series.
+  - Join: prefer on for same-name keys; do not select suffixed key columns for join keys.
+  - Union: params.distinct is required; align must be by_name; type_coerce must be error.
+  - Unreachable nodes: remove nodes that do not contribute to any output.
+  - Output paths: must be under flow_cand/.
+
+  Return ONLY the corrected JSON.

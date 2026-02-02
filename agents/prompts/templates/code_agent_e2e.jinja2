@@ -1,0 +1,29 @@
+{# Interact/e2e mode prompt: include clarifications and profileagent context when available. #}
+{% extends "code_agent.jinja2" %}
+
+{%- block extra_context -%}
+{#- ProfileAgent Insights (e2e mode) -#}
+{%- if context.profile_summary %}
+
+## Profile Agent Insights
+This is a profiling summary produced by the profile agent.
+Use it to guide parsing and cleaning rules, but do NOT hard-code specific data values.
+If it conflicts with the task description or user clarifications, follow those instead.
+{{ context.profile_summary }}
+{%- endif %}
+
+{#- QA History (interact mode) -#}
+{%- if context.qa_history %}
+
+## User Clarifications
+These are authoritative answers from the clarify phase. Apply them as binding business rules.
+If they conflict with the input preview or profile agent insights, follow these clarifications.
+You asked the user the following questions and received these answers:
+{% for qa in context.qa_history %}
+- **Q**: {{ qa.question }}
+  **A**: {{ qa.answer }}{% if qa.canonical_value %} (`{{ qa.canonical_value }}`){% endif %}
+
+{% endfor %}
+Use these clarifications to guide your implementation. They take precedence over your default assumptions.
+{%- endif %}
+{%- endblock -%}
