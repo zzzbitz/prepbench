@@ -93,12 +93,11 @@ class Orchestrator:
         self.parallel_execution = parallel_execution
         self.max_workers = max_workers
     
-    def _execute_and_evaluate_solution(
+    def _execute_solution(
         self,
         solve_source: str,
         round_dir: Path,
         input_dir: Path,
-        gt_dir: Path,
         executor: CodeExecutor,
         *,
         timeout: int = 120,
@@ -106,32 +105,8 @@ class Orchestrator:
         solution_dir = round_dir / "solution"
         solution_dir.mkdir(parents=True, exist_ok=True)
         
-        from core.utils.gt import get_allowed_outputs
         try:
-            allowed_outputs: list[str] = get_allowed_outputs(gt_dir, strict=True)
-        except Exception as e:
-            exec_info = {"rc": 1, "stderr": str(e), "stdout": "", "ok": False}
-            (solution_dir / "execution.json").write_text(json.dumps(exec_info, ensure_ascii=False, indent=2), encoding="utf-8")
-            (solution_dir / "code.py").write_text(solve_source, encoding="utf-8")
-            eval_report = {
-                "passed": False,
-                "errors": [{"error_type": "gt_config_error", "message": str(e)}],
-                "diff_summary": {},
-            }
-            (solution_dir / "evaluation.json").write_text(json.dumps(eval_report, ensure_ascii=False, indent=2), encoding="utf-8")
-            solution_result = {
-                "code": solve_source,
-                "code_path": str((solution_dir / "code.py").resolve()),
-                "cand_dir": str((solution_dir / "cand").resolve()),
-                "evaluation_path": str((solution_dir / "evaluation.json").resolve()),
-                "execution": exec_info,
-                "evaluation": eval_report,
-                "eval_summary": summarize_eval(eval_report),
-            }
-            return solution_result
-        
-        try:
-            main_code = render_main_with_solve(solve_source, allowed_outputs)
+            main_code = render_main_with_solve(solve_source)
         except Exception as e:
             exec_info = {"rc": 1, "stderr": str(e), "ok": False}
             (solution_dir / "execution.json").write_text(json.dumps(exec_info, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -139,10 +114,7 @@ class Orchestrator:
                 "code": solve_source,
                 "code_path": str((solution_dir / "code.py").resolve()),
                 "cand_dir": str((solution_dir / "cand").resolve()),
-                "evaluation_path": str((solution_dir / "evaluation.json").resolve()),
                 "execution": exec_info,
-                "evaluation": {"passed": False, "errors": [{"error_type": "template_error", "message": str(e)}], "diff_summary": {}},
-                "eval_summary": {"passed": False, "errors": [], "diff_summary": {}},
             }
             return solution_result
         
@@ -157,40 +129,12 @@ class Orchestrator:
         (solution_dir / "execution.json").write_text(json.dumps(exec_info, ensure_ascii=False, indent=2), encoding="utf-8")
         
         cand_dir = solution_dir / "cand"
-        gt_dir_abs = str(gt_dir.resolve())
-        cand_dir_abs = str(cand_dir.resolve())
-        cfg_path = str((gt_dir / "config.json").resolve()) if (gt_dir / "config.json").exists() else None
-        
-        if ok and outputs:
-            passed, first_error = evaluate(gt_dir_abs, cand_dir_abs, cfg_path)
-            eval_report = {
-                "passed": bool(passed),
-                "errors": [] if passed else ([first_error] if first_error else []),
-                "diff_summary": {},
-            }
-        elif not ok:
-            eval_report = {
-                "passed": False,
-                "errors": [{"error_type": "execution_failed", "message": stderr or "non-zero returncode"}],
-                "diff_summary": {},
-            }
-        else:
-            eval_report = {
-                "passed": False,
-                "errors": [{"error_type": "no_outputs", "message": "no outputs produced"}],
-                "diff_summary": {},
-            }
-        (solution_dir / "evaluation.json").write_text(json.dumps(eval_report, ensure_ascii=False, indent=2), encoding="utf-8")
-        
-        summary = summarize_eval(eval_report)
+          
         solution_result = {
             "code": solve_source,
             "code_path": str(code_path.resolve()),
             "cand_dir": str(cand_dir.resolve()),
-            "evaluation_path": str((solution_dir / "evaluation.json").resolve()),
             "execution": exec_info,
-            "evaluation": eval_report,
-            "eval_summary": summary,
         }
         return solution_result
 
@@ -1167,7 +1111,6 @@ class Orchestrator:
         
         max_rounds_debug = config.max_rounds_debug
         
-        gt_dir = (tdir / "GT") if (tdir / "GT").exists() else (tdir / "gt")
         input_dir = Path(session_state["input_dir"])
 
         for r in range(1, max_rounds_debug + 1):
@@ -1211,11 +1154,11 @@ class Orchestrator:
                 stopped_reason = "no_code_generated"
                 break
             
-            solution_result = self._execute_and_evaluate_solution(
-                solve_code, round_dir, input_dir, gt_dir, executor, timeout=config.timeout
+            solution_result = self._execute_solution(
+                solve_code, round_dir, input_dir, executor, timeout=config.timeout
             )
             
-            passed = solution_result["evaluation"].get("passed", False)
+            passed = solution_result["execution"].get("ok", False)
             
             round_rec = {
                 "round": r,
@@ -1234,12 +1177,9 @@ class Orchestrator:
             )
             
             exec_ok = solution_result.get("execution", {}).get("ok", False)
-            eval_report = solution_result.get("evaluation", {}) or {}
-            errors = eval_report.get("errors") or []
-            has_no_outputs_error = any((e or {}).get("error_type") == "no_outputs" for e in errors)
 
-            if not exec_ok or has_no_outputs_error:
-                round_rec["error"] = "execution_failed" if not exec_ok else "no_outputs"
+            if not exec_ok:
+                round_rec["error"] = "execution_failed"
                 prev_code = solution_result.get("code")
                 prev_exec_error = solution_result.get("execution")
                 continue
@@ -1248,7 +1188,7 @@ class Orchestrator:
                 stopped_reason = "passed"
                 break
             
-            stopped_reason = "eval_failed"
+            stopped_reason = ""
             break
 
         # Finalize

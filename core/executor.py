@@ -36,7 +36,6 @@ class CodeExecutor:
         self,
         code: str,
         input_files: Dict[str, Path],
-        gt_files: Optional[Dict[str, Path]] = None,
         timeout: Optional[int] = None,
         work_dir: Optional[Path] = None,
     ) -> Tuple[bool, str, str, List[Path]]:
@@ -51,12 +50,9 @@ class CodeExecutor:
             tmp_path.mkdir(parents=True, exist_ok=True)
 
         in_dir = tmp_path / "inputs"
-        gt_dir = tmp_path / "gt"
         cand_dir = tmp_path / "cand"
         in_dir.mkdir(parents=True, exist_ok=True)
         cand_dir.mkdir(parents=True, exist_ok=True)
-        if gt_files:
-            gt_dir.mkdir(parents=True, exist_ok=True)
 
         def _materialize(files: Dict[str, Path], target_dir: Path) -> None:
             for name, src in files.items():
@@ -90,10 +86,8 @@ class CodeExecutor:
                     # Ignore missing gracefully
                     pass
 
-        # Materialize inputs and gt
+        # Materialize inputs
         _materialize(input_files, in_dir)
-        if gt_files:
-            _materialize(gt_files, gt_dir)
 
         code_path = tmp_path / "main.py"
         code_path.write_text(code, encoding="utf-8")

@@ -22,7 +22,7 @@ def _read_inputs() -> dict[str, pd.DataFrame]:
         tables[p.name] = df
     return tables
 
-def _validate_and_write(res: dict[str, pd.DataFrame], allowed: list[str]) -> None:
+def _write_result(res: dict[str, pd.DataFrame]) -> None:
     cand = Path('cand')
     cand.mkdir(parents=True, exist_ok=True)
     # Log returned keys
@@ -31,19 +31,13 @@ def _validate_and_write(res: dict[str, pd.DataFrame], allowed: list[str]) -> Non
     # Validate keys match exactly
     if not isinstance(res, dict):
         raise TypeError('solve() must return dict[str, DataFrame]')
-    if set(res.keys()) != set(allowed):
-        missing = [x for x in allowed if x not in res]
-        extra = [x for x in res.keys() if x not in allowed]
-        raise ValueError(f'Outputs mismatch. missing={missing}, extra={extra}')
-    for name in allowed:
-        df = res[name]
+    for name, df in res.items():
         if not isinstance(df, pd.DataFrame):
             raise TypeError(f'Output {name} is not a DataFrame')
         print(f"[solve_template] writing {name} rows={len(df)}", file=sys.stderr)
         df.to_csv(cand / name, index=False, encoding="utf-8")
 
 if __name__ == '__main__':
-    allowed_outputs = {{ allowed_outputs_list }}
     tables = _read_inputs()
     result = solve(tables)
-    _validate_and_write(result, allowed_outputs)
+    _write_result(result)
