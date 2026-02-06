@@ -6,7 +6,7 @@ Minimal evaluator for comparing a candidate output directory against a ground-tr
 - Input: `gt_dir` (must contain `config.json`) and `cand_dir`.
 - Output: a boolean pass/fail plus **only the first mismatch** detail.
 - Fail-fast: evaluation stops at the first meaningful mismatch.
-- No CLI, no batch scripts, no side effects (no printing).
+- Includes a batch CLI for evaluating all case outputs under one results root.
 
 ## Public API
 
@@ -84,3 +84,29 @@ if ok:
 else:
     print("FAIL", err)
 ```
+
+## Batch CLI
+
+Batch mode evaluates all `case_*` folders under a results root and writes one CSV.
+
+```bash
+python -m evaluate.batch --results-root @output/<model>/<run_mode>
+```
+
+Behavior:
+- GT is always loaded from `evaluate/gt/case_xxx`.
+- Candidate directory is auto-detected per case:
+  - prefer `solution/flow_cand` when present with CSV files
+  - otherwise use `solution/cand`
+- Output CSV is written to:
+  - `<results_root>/evaluation_summary.csv`
+
+CSV columns:
+- `case_name`
+- `evaluated`
+- `passed`
+- `candidate_kind`
+- `candidate_dir`
+- `gt_dir`
+- `error_type`
+- `error_message`

@@ -82,7 +82,6 @@ from agents.flow_agent import FlowAgent
 from core.utils.paths import get_output_path
 from agents.profile_agent import ProfileAgent
 from .executor import CodeExecutor
-from evaluate.core import evaluate
 from config.experiment_config import ExperimentConfig
 from core.orchestration.common import copy_solution_artifacts, resolve_query_path, summarize_eval
 from core.utils.exec_utils import render_main_with_solve
@@ -816,23 +815,52 @@ class Orchestrator:
 
         inputs = [p.name for p in sorted(Path(ctx["input_dir"]).glob("*.csv"))]
 
-        # Load cached interact QA history for this model - skip if missing
+        # Load cached interact artifacts for this model; regenerate if missing.
         interact_cfg = dataclasses.replace(config, run_mode="interact")
         interact_output_root = get_output_path(tdir, interact_cfg)
         qa_history, clarify_history, clarify_rounds = _load_clarify_cache(interact_output_root)
         if qa_history is None:
-            # Cache miss - skip this case (prefilter in run.py should have caught this)
-            return {"skipped": True, "reason": "interact_cache_miss"}
+            self._run_clarify_phase(
+                tdir=tdir,
+                config=interact_cfg,
+                output_root=interact_output_root,
+                input_dir=ctx["input_dir"],
+                query_text=ctx["query_text"],
+                query_full_text=ctx["query_full_text"],
+                inputs_preview=ctx["inputs_preview"],
+                amb_kb_json=ctx["amb_kb_json"],
+                solution_text=ctx["solution_text"],
+            )
+            qa_history, clarify_history, clarify_rounds = _load_clarify_cache(interact_output_root)
+            if qa_history is None:
+                return {"skipped": True, "reason": "interact_regen_failed"}
 
-        # Load cached profile summary for this model - required for e2e
+        # Load cached profile summary for this model; regenerate if missing.
         profile_summary = ""
         profile_error: Optional[str] = None
         profile_cfg = dataclasses.replace(config, run_mode="profile")
         profile_output_root = get_output_path(tdir, profile_cfg)
         cached_summary = _load_profile_summary(profile_output_root)
         if cached_summary is None:
-            # Cache miss - skip this case
-            return {"skipped": True, "reason": "profile_cache_miss"}
+            profile_result = self._run_profile_phase(
+                tdir=tdir,
+                config=profile_cfg,
+                output_root=profile_output_root,
+                query_text=ctx["query_full_text"],
+                input_dir=ctx["input_dir"],
+                inputs=inputs,
+                inputs_preview=ctx["inputs_preview"],
+            )
+            regen_error = profile_result.get("error") if isinstance(profile_result, dict) else None
+            if isinstance(regen_error, str) and regen_error.strip():
+                profile_error = regen_error
+            cached_summary = _load_profile_summary(profile_output_root)
+            if cached_summary is None:
+                regenerated_summary = profile_result.get("summary") if isinstance(profile_result, dict) else None
+                if isinstance(regenerated_summary, str):
+                    cached_summary = regenerated_summary
+                else:
+                    cached_summary = ""
         profile_summary = cached_summary
 
         def _zero_usage() -> dict:
@@ -949,12 +977,13 @@ class Orchestrator:
                     output_root=ctx["output_root"],
                 )
             
-            # code_exec_ok: code ran without errors (cand exists), regardless of eval result
+            # code_exec_ok: code ran without errors and produced candidate outputs
             code_exec_ok = code_already_done or (
                 (ctx["output_root"] / "solution" / "cand").exists() and 
                 any((ctx["output_root"] / "solution" / "cand").iterdir())
             )
             code_passed = bool(code_result.get("passed", False))
+            code_reason = str(code_result.get("stopped_reason") or "")
             
             flow_result: Optional[Dict[str, Any]] = None
             flow_passed = False
@@ -1008,8 +1037,13 @@ class Orchestrator:
 
             # Preserve code_passed/code_reason from existing status when skipping code phase
             if skip_code_phase:
-                code_passed = bool(code_final_status.get("code_passed", code_passed))
-                code_reason = code_final_status.get("code_reason") or code_reason
+                code_passed = bool(
+                    code_final_status.get(
+                        "code_passed",
+                        code_final_status.get("passed", code_passed),
+                    )
+                )
+                code_reason = str(code_final_status.get("code_reason") or code_final_status.get("reason") or code_reason)
             
             overall_passed = code_passed and flow_passed
             if overall_passed:
@@ -1020,7 +1054,7 @@ class Orchestrator:
                 overall_reason = "flow_failed"
 
             if not skip_code_phase:
-                code_reason = code_final_status.get("reason")
+                code_reason = str(code_final_status.get("reason") or code_reason)
             final_status = {
                 "ok": bool(code_ok and (flow_ok if flow_ran else True)),
                 "rc": flow_rc if flow_ran else code_rc,
@@ -1031,9 +1065,9 @@ class Orchestrator:
                 "code_passed": code_passed,
                 "code_reason": code_reason or code_result.get("stopped_reason"),
                 "flow_passed": flow_passed,
-                "flow_reason": flow_final_status.get("reason", flow_reason),
+                "flow_reason": str(flow_final_status.get("reason", flow_reason)),
                 "gui_passed": flow_passed,
-                "gui_reason": flow_final_status.get("reason", flow_reason),
+                "gui_reason": str(flow_final_status.get("reason", flow_reason)),
             }
             (ctx["output_root"] / "solution" / "final_status.json").write_text(
                 json.dumps(final_status, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -1594,10 +1628,6 @@ class Orchestrator:
         if not input_dir.is_dir():
             raise FileNotFoundError(f"[flow mode] inputs/ directory not found: {tdir}")
 
-        gt_dir = (tdir / "GT") if (tdir / "GT").exists() else (tdir / "gt")
-        if not gt_dir.exists():
-            raise FileNotFoundError(f"[flow mode] GT directory not found: {tdir}")
-
         if not isinstance(solution_text, str) or not solution_text.strip():
             raise FileNotFoundError("[flow mode] solution.py content is empty")
 
@@ -1761,12 +1791,13 @@ class Orchestrator:
 
                 exec_info = {"ok": True, "rc": 0, "stderr": "", "stdout": "", "took_sec": took_sec}
 
-                # Execution succeeded! Evaluate once, but do not provide evaluation feedback to the agent.
+                # Execution succeeded in run phase. Correctness evaluation is deferred.
                 cand_dir = solution_dir / "flow_cand"
+                output_files = sorted(cand_dir.glob("*.csv")) if cand_dir.exists() else []
 
-                if not cand_dir.exists():
+                if not cand_dir.exists() or not output_files:
                     stopped_reason = "execerror"
-                    exec_info["stderr"] = "flow_cand directory not created"
+                    exec_info["stderr"] = "No flow CSV outputs produced under flow_cand."
                     exec_info["ok"] = False
                     exec_info["rc"] = 1
                     eval_report = {
@@ -1777,27 +1808,22 @@ class Orchestrator:
                     _write_solution_artifacts(solution_dir, exec_info, eval_report)
                     feedback = {
                         "type": "execution",
-                        "message": "No output files were created. Ensure all Output nodes write to flow_cand/.",
+                        "message": "No output files were created. Ensure all Output nodes write CSV files to flow_cand/.",
                         "details": {},
                     }
                     hist.append({"round": round_num, "passed": False, "stopped_reason": stopped_reason})
                     continue
 
-                # ========== Evaluate ==========
-                gt_dir_abs = str(gt_dir.resolve())
-                cand_dir_abs = str(cand_dir.resolve())
-                cfg_path = str((gt_dir / "config.json").resolve()) if (gt_dir / "config.json").exists() else None
-
-                passed, first_error = evaluate(gt_dir_abs, cand_dir_abs, cfg_path)
+                passed = True
                 eval_report = {
-                    "passed": bool(passed),
-                    "errors": [] if passed else ([first_error] if first_error else []),
+                    "passed": True,
+                    "errors": [],
                     "diff_summary": {},
+                    "note": "evaluation_skipped_in_run_phase",
                 }
-                passed = eval_report.get("passed", False)
-                stopped_reason = "execok-pass" if passed else "execok-fail"
+                stopped_reason = "execok"
                 _write_solution_artifacts(solution_dir, exec_info, eval_report)
-                hist.append({"round": round_num, "passed": bool(passed), "stopped_reason": stopped_reason})
+                hist.append({"round": round_num, "passed": True, "stopped_reason": stopped_reason})
 
                 # Stop immediately once execution succeeds (do not iterate using evaluation feedback).
                 break
@@ -1945,10 +1971,9 @@ class Orchestrator:
     def _run_flow(self, tdir: Path, config: ExperimentConfig) -> Dict[str, Any]:
         """Run flow mode: FlowAgent generates flow.json, DAGExecutor runs it.
         
-        Multi-round execution: generate -> validate -> execute -> evaluate.
+        Multi-round execution: generate -> validate -> execute.
         Retries are allowed only for flow generation/validation/execution failures.
-        Once execution succeeds (even if evaluation fails), the case is considered completed and
-        evaluation results are NOT fed back to the agent.
+        Correctness evaluation is deferred to offline batch evaluation.
         """
         from core.utils.paths import get_output_path
 
