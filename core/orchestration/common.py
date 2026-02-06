@@ -20,17 +20,19 @@ def resolve_query_path(
 ) -> Path:
     """Resolve query file path based on run_mode.
     
-    - full/cleanspec/profile: uses query_full.md
-    - raw/raw_profile/interact/e2e/flow: uses query.md
+    - disamb/disamb_only/full/cleanspec/profile: uses query_full.md
+    - orig/raw/raw_profile/interact/e2e/flow: uses query.md
     """
-    if run_mode in ("full", "cleanspec", "profile"):
+    if run_mode in ("disamb", "disamb_only", "full", "cleanspec", "profile"):
         return tdir / "query_full.md"
 
-    if run_mode in ("raw", "raw_profile", "interact", "e2e", "flow"):
+    if run_mode in ("orig", "raw", "raw_profile", "interact", "e2e", "flow"):
         return tdir / "query.md"
 
     raise ValueError(
-        f"Unknown run_mode: {run_mode}. Expected one of ['raw','raw_profile','full','cleanspec','profile','interact','e2e','flow']."
+        "Unknown run_mode: "
+        f"{run_mode}. Expected one of "
+        "['orig','disamb','disamb_only','raw','raw_profile','full','cleanspec','profile','interact','e2e','flow']."
     )
 
 

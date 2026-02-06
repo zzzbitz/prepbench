@@ -34,7 +34,7 @@ Important notes:
 
 ```yaml
 experiment:
-  run_mode: "raw"
+  run_mode: "orig"
 
 llm:
   active_provider: "openrouter"
@@ -64,7 +64,7 @@ EOF
 2) Run a single case:
 
 ```bash
-python run.py --case 1 --run_mode raw --model openai/gpt-5.2
+python run.py --case 1 --run_mode orig --model openai/gpt-5.2
 ```
 
 3) Check outputs:
@@ -74,32 +74,31 @@ python run.py --case 1 --run_mode raw --model openai/gpt-5.2
 
 ## Run Modes (`run_mode`)
 
-- `raw`: use `data/<case>/query.md`
-- `full`: use `data/<case>/query_full.md`
-- `interact`: interactive clarification
-- `profile`: data profiling
-- `e2e`: end-to-end (clarify + profile + solve)
-- `flow`: flow-only execution
-- `raw_profile`: raw + profile
+- `orig`: raw query + profile + code
+- `disamb`: disambiguated/full query + profile + code
+- `interact`: raw query + clarify + profile + code
+- `disamb_only`: disambiguated/full query + code (no profile)
+- `e2e`: interact pipeline + code-to-flow
+- `flow`: flow-only execution (requires solution.py)
 
 ## Usage
 
 ### Run a single case
 
 ```bash
-python run.py --case 52 --run_mode full --model openai/gpt-5.2
+python run.py --case 52 --run_mode disamb --model openai/gpt-5.2
 ```
 
 ### Run a range of cases
 
 ```bash
-python run.py --case 5-8 --run_mode raw --model openai/gpt-5.2
+python run.py --case 5-8 --run_mode orig --model openai/gpt-5.2
 ```
 
 ### Run all cases
 
 ```bash
-python run.py --run_mode raw --model openai/gpt-5.2
+python run.py --run_mode orig --model openai/gpt-5.2
 ```
 
 ### Use defaults from settings
@@ -113,8 +112,8 @@ python run.py --case 52
 
 ### Notes on e2e
 
-`e2e` can run directly. For faster or more consistent runs, you may choose to run `interact` and `profile`
-first to populate caches, but it is not required.
+`e2e` can run directly. It automatically reuses existing `interact` artifacts when available, and
+`interact` can reuse artifacts prepared during a previous `e2e` run.
 
 ## Output
 

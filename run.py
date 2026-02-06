@@ -302,7 +302,7 @@ def run_single_case(
                     if path.exists():
                         path.unlink()
                 print(f"[{case_path.name}][{config.run_mode}][{config.model_name}] Cleaned flow outputs for continuation: {output_path}")
-            elif config.run_mode in ("profile", "raw_profile") and _valid_profile_cache(profile_summary):
+            elif config.run_mode in ("orig", "disamb", "profile", "raw_profile") and _valid_profile_cache(profile_summary):
                 rounds_dir = output_path / "rounds"
                 solution_dir = output_path / "solution"
                 if rounds_dir.exists():
@@ -333,7 +333,15 @@ def run_single_case(
 def main():
     parser = argparse.ArgumentParser(description="Run AutoETL Experiment")
     parser.add_argument("--case", type=str, help="Case ID (e.g., 52), Range (e.g., 5-8), case_XXX, or Path. If omitted, runs all cases.")
-    parser.add_argument("--run_mode", "--mode", type=str, help="Run mode (comma-separated). Choices: raw, raw_profile, full, profile, interact, e2e, flow. Defaults to config.")
+    parser.add_argument(
+        "--run_mode",
+        "--mode",
+        type=str,
+        help=(
+            "Run mode (comma-separated). Choices: "
+            "orig, disamb, interact, disamb_only, e2e, flow. Defaults to config."
+        ),
+    )
     parser.add_argument("--model", type=str, help="Model name (comma-separated). Defaults to config.")
 
     parser.add_argument("--subset", action="store_true", help="Only run cases that are multiples of 15 (e.g., 015, 030, 045...)")
@@ -371,7 +379,7 @@ def main():
             run_modes = [cfg_mode]
 
     run_modes = dedupe_preserve_order(run_modes)
-    allowed_run_modes = {"raw", "raw_profile", "full", "profile", "interact", "e2e", "flow"}
+    allowed_run_modes = {"orig", "disamb", "interact", "disamb_only", "e2e", "flow"}
     invalid_run_modes = [m for m in run_modes if m not in allowed_run_modes]
     if invalid_run_modes:
         print(f"Error: Unknown --run_mode values: {invalid_run_modes}. Allowed: {sorted(allowed_run_modes)}")
@@ -467,10 +475,10 @@ def main():
         action, reason = decide_run_from_status(status_state, status)
         if action.startswith("skip_"):
             rerun_due_llm = False
-            if cfg.run_mode in {"profile", "raw_profile", "interact", "flow"}:
+            if cfg.run_mode in {"orig", "disamb", "interact", "flow"}:
                 if _should_rerun_due_to_llm_status(status):
                     rerun_due_llm = True
-                elif cfg.run_mode in {"profile", "raw_profile"} and _should_rerun_profile_due_to_llm(output_path):
+                elif cfg.run_mode in {"orig", "disamb"} and _should_rerun_profile_due_to_llm(output_path):
                     rerun_due_llm = True
                 elif cfg.run_mode == "interact" and _should_rerun_interact_due_to_llm(output_path):
                     rerun_due_llm = True
@@ -541,7 +549,7 @@ def main():
                 f"{base_config.question_ratio} max_questions_cap={base_config.max_questions_cap} "
                 f"max_questions_per_ask={base_config.max_questions_per_ask}"
             )
-        if any(m in ("profile", "raw_profile") for m in run_modes):
+        if any(m in ("orig", "disamb", "interact", "e2e") for m in run_modes):
             print(f"Profile: enabled={base_config.profile.enabled} max_rows_per_file={base_config.profile.max_rows_per_file} max_rounds={base_config.profile.max_rounds}")
 
         try:
@@ -605,7 +613,6 @@ if __name__ == "__main__":
     main()
 
 
-# python run.py --case 15
-# python run.py --case 1-5
-# python run.py
-# --force --onlyfalse
+# python run.py --case 15 --run_mode orig
+# python run.py --case 1-5 --run_mode disamb
+# python run.py --run_mode e2e

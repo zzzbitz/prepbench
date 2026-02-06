@@ -1,5 +1,5 @@
 experiment:
-  run_mode: "raw"
+  run_mode: "orig"
   max_rounds_debug: 3  # Total attempts including initial (e.g., 3 = initial + 2 retries)
   max_rounds_interact: 3
   question_ratio: 2.5         # max_questions = ceil(question_ratio * ambiguity_count)

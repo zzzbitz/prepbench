@@ -648,76 +648,16 @@ class Orchestrator:
             return None
 
     def _run_interact(self, tdir: Path, config: ExperimentConfig) -> Dict[str, Any]:
-        """Run interact mode: clarify phase + code phase.
-        
-        Phase 1 (Clarify): PrepAgent asks questions, Clarifier answers.
-        Phase 2 (Code): Reuses raw mode logic with qa_history injected into CodeAgent.
+        """Run interact mode as e2e pipeline without flow stage."""
+        interact_cfg = dataclasses.replace(config, run_mode="interact")
+        return self._run_e2e(tdir, interact_cfg, with_flow=False)
+
+    def _run_e2e(self, tdir: Path, config: ExperimentConfig, *, with_flow: bool = True) -> Dict[str, Any]:
+        """Run end-to-end pipeline.
+
+        with_flow=False: clarify + profile + code (interact mode).
+        with_flow=True: clarify + profile + code + flow (e2e mode).
         """
-        ctx = self._prepare_interact_context(tdir, config)
-        
-        # Initialize usage tracker
-        from llm_connect.usage_tracker import UsageTracker, set_tracker
-        
-        prompt_price, completion_price = 0.0, 0.0
-        tracker = UsageTracker(
-            model=config.model_name,
-            prompt_price=prompt_price,
-            completion_price=completion_price,
-        )
-        set_tracker(tracker)
-        
-        try:
-            # ========== Phase 1: Clarify ==========
-            tracker.set_phase("clarify")
-            clarify = self._run_clarify_phase(
-                tdir=tdir,
-                config=config,
-                output_root=ctx["output_root"],
-                input_dir=ctx["input_dir"],
-                query_text=ctx["query_text"],
-                query_full_text=ctx["query_full_text"],
-                inputs_preview=ctx["inputs_preview"],
-                amb_kb_json=ctx["amb_kb_json"],
-                solution_text=ctx["solution_text"],
-            )
-
-            # ========== Phase 2: Code (reuse raw mode logic) ==========
-            tracker.set_phase("code")
-            # Build session state with qa_history for CodeAgent
-            code_session_state = {
-                "task_dir": str(tdir),
-                "input_dir": str(ctx["input_dir"]),
-                "model_name": config.model_name,
-                "run_mode": config.run_mode,
-                "output_root": str(ctx["output_root"]),
-                "query": ctx["query_text"],
-                "qa_history": clarify["qa_history"],  # Injected from clarify phase
-            }
-
-            code_result = self._run_code_phase(
-                tdir=tdir,
-                config=config,
-                session_state=code_session_state,
-                output_root=ctx["output_root"],
-            )
-
-            # Combine results
-            return {
-                "passed": code_result.get("passed", False),
-                "clarify_rounds": len(clarify["clarify_history"]),
-                "code_rounds": code_result.get("rounds", 0),
-                "clarify_history": clarify["clarify_history"],
-                "code_history": code_result.get("history", []),
-                "qa_history": clarify["qa_history"],
-                "stopped_reason": code_result.get("stopped_reason", "unknown"),
-            }
-        finally:
-            # Save usage and cleanup
-            tracker.save(ctx["output_root"] / "token_usage.json")
-            set_tracker(None)
-
-    def _run_e2e(self, tdir: Path, config: ExperimentConfig) -> Dict[str, Any]:
-        """Run end-to-end mode: clarify phase + profile phase + code phase."""
         ctx = self._prepare_interact_context(tdir, config)
 
         def _iter_round_dirs(clarify_root: Path) -> list[Path]:
@@ -838,15 +778,15 @@ class Orchestrator:
         # Load cached profile summary for this model; regenerate if missing.
         profile_summary = ""
         profile_error: Optional[str] = None
-        profile_cfg = dataclasses.replace(config, run_mode="profile")
-        profile_output_root = get_output_path(tdir, profile_cfg)
+        profile_cfg = dataclasses.replace(config, run_mode="interact")
+        profile_output_root = interact_output_root
         cached_summary = _load_profile_summary(profile_output_root)
         if cached_summary is None:
             profile_result = self._run_profile_phase(
                 tdir=tdir,
                 config=profile_cfg,
                 output_root=profile_output_root,
-                query_text=ctx["query_full_text"],
+                query_text=ctx["query_text"],
                 input_dir=ctx["input_dir"],
                 inputs=inputs,
                 inputs_preview=ctx["inputs_preview"],
@@ -949,19 +889,20 @@ class Orchestrator:
         try:
             # ========== Code Phase ==========
             tracker.set_phase("code")
+            code_output_root = interact_output_root
             code_session_state = {
                 "task_dir": str(tdir),
                 "input_dir": str(ctx["input_dir"]),
                 "model_name": config.model_name,
                 "run_mode": config.run_mode,
-                "output_root": str(ctx["output_root"]),
+                "output_root": str(code_output_root),
                 "query": ctx["query_text"],
                 "qa_history": qa_history or [],
             }
             code_session_state["profile_summary"] = profile_summary
 
             # Check if code phase already completed (cand directory exists with outputs)
-            cand_dir = ctx["output_root"] / "solution" / "cand"
+            cand_dir = code_output_root / "solution" / "cand"
             code_already_done = cand_dir.exists() and any(cand_dir.iterdir())
             skip_code_phase = False
             
@@ -974,27 +915,33 @@ class Orchestrator:
                     tdir=tdir,
                     config=config,
                     session_state=code_session_state,
-                    output_root=ctx["output_root"],
+                    output_root=code_output_root,
                 )
             
             # code_exec_ok: code ran without errors and produced candidate outputs
             code_exec_ok = code_already_done or (
-                (ctx["output_root"] / "solution" / "cand").exists() and 
-                any((ctx["output_root"] / "solution" / "cand").iterdir())
+                (code_output_root / "solution" / "cand").exists() and 
+                any((code_output_root / "solution" / "cand").iterdir())
             )
             code_passed = bool(code_result.get("passed", False))
             code_reason = str(code_result.get("stopped_reason") or "")
+            final_solution_dir = ctx["output_root"] / "solution"
+
+            # Keep e2e output synchronized with interact code artifacts.
+            code_solution_dir = code_output_root / "solution"
+            if code_output_root != ctx["output_root"] and code_solution_dir.exists():
+                copy_solution_artifacts(code_solution_dir, final_solution_dir)
             
             flow_result: Optional[Dict[str, Any]] = None
-            flow_passed = False
+            flow_passed = not with_flow
             flow_ran = False
-            flow_reason = "skipped_code_failed"
+            flow_reason = "skipped_flow_disabled" if not with_flow else "skipped_code_failed"
             flow_output_root = ctx["output_root"] / "flow"
             flow_solution_dir = flow_output_root / "solution"
 
-            # Run flow if code executed successfully (cand exists), regardless of eval result
-            if code_exec_ok:
-                solution_path = ctx["output_root"] / "solution" / "solution.py"
+            # Run flow if code executed successfully (cand exists).
+            if with_flow and code_exec_ok:
+                solution_path = code_output_root / "solution" / "solution.py"
                 solution_text = ""
                 if solution_path.exists():
                     solution_text = solution_path.read_text(encoding="utf-8")
@@ -1021,7 +968,7 @@ class Orchestrator:
                     flow_reason = "solution_missing"
 
             # Update final status with code/flow outcomes
-            code_status_path = ctx["output_root"] / "solution" / "final_status.json"
+            code_status_path = code_output_root / "solution" / "final_status.json"
             code_final_status = self._read_json_if_exists(code_status_path)
             if not isinstance(code_final_status, dict):
                 code_final_status = {}
@@ -1045,13 +992,15 @@ class Orchestrator:
                 )
                 code_reason = str(code_final_status.get("code_reason") or code_final_status.get("reason") or code_reason)
             
-            overall_passed = code_passed and flow_passed
+            overall_passed = code_passed and (flow_passed if with_flow else True)
             if overall_passed:
                 overall_reason = "passed"
             elif not code_passed:
                 overall_reason = "code_failed"
-            else:
+            elif with_flow:
                 overall_reason = "flow_failed"
+            else:
+                overall_reason = "passed"
 
             if not skip_code_phase:
                 code_reason = str(code_final_status.get("reason") or code_reason)
@@ -1064,12 +1013,13 @@ class Orchestrator:
                 "message": code_final_status.get("message", ""),
                 "code_passed": code_passed,
                 "code_reason": code_reason or code_result.get("stopped_reason"),
-                "flow_passed": flow_passed,
+                "flow_passed": bool(flow_passed) if with_flow else False,
                 "flow_reason": str(flow_final_status.get("reason", flow_reason)),
-                "gui_passed": flow_passed,
+                "gui_passed": bool(flow_passed) if with_flow else False,
                 "gui_reason": str(flow_final_status.get("reason", flow_reason)),
             }
-            (ctx["output_root"] / "solution" / "final_status.json").write_text(
+            final_solution_dir.mkdir(parents=True, exist_ok=True)
+            (final_solution_dir / "final_status.json").write_text(
                 json.dumps(final_status, ensure_ascii=False, indent=2), encoding="utf-8"
             )
             # Merge token usage: clarify/profile from cache, code from existing or tracker, flow from tracker
@@ -1079,7 +1029,7 @@ class Orchestrator:
             
             # If code phase was skipped, read code usage from existing token_usage.json
             if skip_code_phase:
-                code_usage = _read_token_section(ctx["output_root"] / "token_usage.json", "code")
+                code_usage = _read_token_section(code_output_root / "token_usage.json", "code")
             else:
                 code_usage = _normalize_usage(tracker_data.get("code"))
             
@@ -1103,7 +1053,7 @@ class Orchestrator:
             return {
                 "passed": overall_passed,
                 "code_passed": code_passed,
-                "flow_passed": flow_passed,
+                "flow_passed": bool(flow_passed) if with_flow else False,
                 "flow_ran": flow_ran,
                 "flow_reason": final_status.get("flow_reason"),
                 "clarify_rounds": clarify_rounds,
@@ -2020,12 +1970,12 @@ class Orchestrator:
 
         if config.run_mode == "flow":
             return self._run_flow(tdir, config)
-        elif config.run_mode in ("profile", "raw_profile"):
+        elif config.run_mode in ("orig", "disamb", "profile", "raw_profile"):
             return self._run_profile(tdir, config)
         elif config.run_mode == "interact":
             return self._run_interact(tdir, config)
         elif config.run_mode == "e2e":
-            return self._run_e2e(tdir, config)
+            return self._run_e2e(tdir, config, with_flow=True)
             
         # ========== Raw/Full Mode: Direct Code Generation ==========
         from core.utils.paths import get_output_path

@@ -89,7 +89,7 @@ class ExperimentConfig:
         if not model_name:
             raise ValueError("Model name not found. Provide --model or set LLM_MODEL.")
 
-        run_mode = exp_data.get("run_mode", "raw")
+        run_mode = exp_data.get("run_mode", "orig")
         if isinstance(run_mode, list):
             run_mode = run_mode[0]
         elif isinstance(run_mode, str) and "," in run_mode:
