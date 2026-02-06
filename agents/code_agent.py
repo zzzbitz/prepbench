@@ -23,12 +23,13 @@ class CodeAgent:
         self.jinja_env = Environment(loader=FileSystemLoader(template_dir), trim_blocks=True, lstrip_blocks=True)
 
     @staticmethod
-    def _select_template_name(run_mode: str) -> str:
-        mode = (run_mode or "").strip().lower()
-        if mode in ("profile", "raw_profile"):
-            return "code_agent_profile.jinja2"
+    def _select_template_name(ctx: Dict[str, Any]) -> str:
+        """Select prompt template strictly by run_mode semantics."""
+        mode = str(ctx.get("run_mode") or "").strip().lower()
         if mode in ("interact", "e2e"):
             return "code_agent_e2e.jinja2"
+        if mode in ("orig", "disamb", "profile", "raw_profile"):
+            return "code_agent_profile.jinja2"
         return "code_agent_raw.jinja2"
 
     def _collect_context(self, session_state: Dict[str, Any]) -> Dict:
@@ -62,7 +63,7 @@ class CodeAgent:
         """Builds the prompt using the Jinja2 template."""
         prompt_name = "code_agent"
         cfg = load_prompt_yaml(prompt_name)
-        template_name = self._select_template_name(ctx.get("run_mode", ""))
+        template_name = self._select_template_name(ctx)
         template = self.jinja_env.get_template(template_name)
 
         # Render the template with all the context and feedback

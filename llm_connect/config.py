@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from typing import Dict, Any, Optional, Tuple
 from functools import lru_cache
 
@@ -226,20 +227,95 @@ def validate_clarifier_settings() -> None:
         raise ValueError(f"Clarifier model for provider '{active}' must be a non-empty string.")
 
 
+def _camel_to_snake(name: str) -> str:
+    text = (name or "").strip()
+    if not text:
+        return ""
+    text = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", text)
+    return text.replace("-", "_").lower()
+
+
+def _alias_candidates(name: str) -> list[str]:
+    raw = (name or "").strip()
+    if not raw:
+        return []
+    snake = _camel_to_snake(raw)
+    lower = raw.lower().replace("-", "_")
+
+    candidates: list[str] = []
+    for item in (raw, lower, snake):
+        if item and item not in candidates:
+            candidates.append(item)
+
+    for item in (lower, snake):
+        if item.endswith("_agent"):
+            short = item[:-6]
+            if short and short not in candidates:
+                candidates.append(short)
+        elif item.endswith("agent"):
+            short = item[:-5]
+            if short and short not in candidates:
+                candidates.append(short)
+    return candidates
+
+
+def _extract_params_override(params_root: Any, agent_name: str, step_name: str) -> Dict[str, Any]:
+    """Extract llm.params.<agent>.<step> overrides with light aliases."""
+    if not isinstance(params_root, dict):
+        return {}
+
+    merged: Dict[str, Any] = {}
+    agent_aliases = _alias_candidates(agent_name)
+    step_aliases = _alias_candidates(step_name)
+    if step_name and step_name not in step_aliases:
+        step_aliases.append(step_name)
+
+    # Support params.<agent>.default + params.<agent>.<step>
+    for agent_key in agent_aliases:
+        node = params_root.get(agent_key)
+        if not isinstance(node, dict):
+            continue
+        default_node = node.get("default")
+        if isinstance(default_node, dict):
+            merged.update(default_node)
+        for step_key in step_aliases:
+            step_node = node.get(step_key)
+            if isinstance(step_node, dict):
+                merged.update(step_node)
+
+    # Support params.<step> as global step-level fallback.
+    for step_key in step_aliases:
+        step_node = params_root.get(step_key)
+        if isinstance(step_node, dict):
+            merged.update(step_node)
+
+    return merged
+
+
 def get_llm_params(agent_name: str, step_name: str) -> Dict[str, Any]:
     is_clarifier = agent_name.lower().startswith("clarifier")
-    
+
+    llm_root = _get_section_for_agent(None)
+    llm_default = (llm_root or {}).get("default_params") or {}
+    llm_params_root = (llm_root or {}).get("params") or {}
+
+    merged: Dict[str, Any] = {}
+    if isinstance(llm_default, dict):
+        merged.update(llm_default)
+
     if is_clarifier:
-        if _has_top_level_clarifier():
-            sect = _get_section_for_agent("clarifier")
-            params = (sect or {}).get("default_params")
-            if isinstance(params, dict) and params:
-                return params
-            # If clarifier section exists but doesn't specify params, inherit from llm.
-            root = _get_section_for_agent(None)
-            return (root or {}).get("default_params") or {}
-        root = _get_section_for_agent(None)
-        return (root or {}).get("default_params") or {}
-    
-    root = _get_section_for_agent(None)
-    return (root or {}).get("default_params") or {}
+        clarifier_sect = _get_section_for_agent("clarifier")
+        clarifier_default = (clarifier_sect or {}).get("default_params") or {}
+        if isinstance(clarifier_default, dict) and clarifier_default:
+            merged.update(clarifier_default)
+
+        llm_override = _extract_params_override(llm_params_root, agent_name, step_name)
+        merged.update(llm_override)
+
+        clarifier_params_root = (clarifier_sect or {}).get("params") or {}
+        if isinstance(clarifier_params_root, dict):
+            merged.update(_extract_params_override(clarifier_params_root, agent_name, step_name))
+        return merged
+
+    merged.update(_extract_params_override(llm_params_root, agent_name, step_name))
+    return merged

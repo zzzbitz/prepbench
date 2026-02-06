@@ -34,7 +34,9 @@ From `llm_connect.config` (used by other modules):
    - provider `model` field
 3) Resolve provider implementation:
    - `provider_factory` (format `module:function`) if present
-   - otherwise `type` matched in registry (built-in: `openrouter`)
+   - otherwise `type` matched in registry (built-in: `openrouter`, `openai_compatible`)
+
+Provider type matching is case-insensitive.
 
 If no provider can be resolved, an error is raised with guidance.
 
@@ -49,6 +51,8 @@ llm:
     openrouter:
       type: openrouter
       model: openai/gpt-5.2
+      # Optional; defaults to https://openrouter.ai/api/v1
+      # base_url: https://openrouter.ai/api/v1
       http_referer: "https://example.com"
       x_title: "prepbench"
 ```
@@ -59,6 +63,20 @@ API keys must be provided via `.env` or environment variables:
 cat << 'EOF' > .env
 OPENROUTER_API_KEY=your-key
 EOF
+```
+
+### Built-in OpenAI-Compatible
+
+```yaml
+llm:
+  active_provider: volc
+  providers:
+    volc:
+      type: openai_compatible
+      model: your-model-name
+      base_url: https://<your-endpoint>/v1
+      # Optional; can also come from OPENAI_API_KEY/OPENROUTER_API_KEY
+      # api_key: your-api-key
 ```
 
 ### Custom Provider (dynamic import)
@@ -97,10 +115,12 @@ If a provider wants to report usage, it can call `get_tracker()` and record toke
 
 ## OpenRouter Client
 
-`llm_connect.openrouter_client.OpenRouterLLMClient` implements:
+`llm_connect.openrouter_client.OpenAICompatibleChatClient` implements:
 
 - Retry with exponential backoff for transient HTTP failures
 - Optional usage tracking via `usage_tracker`
+
+`OpenRouterLLMClient` is kept as a compatibility wrapper over the same implementation.
 
 ## External Usage Notes
 

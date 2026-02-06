@@ -74,7 +74,8 @@ class ClarifierResult:
 
 _JSON_CODE_FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)```", re.MULTILINE)
 
-_ANSWER_REQUIRED_FIELDS = ("sub_question", "classification", "source", "answer", "ref")
+# "ref" is optional in schema; keep it as optional in parser validation as well.
+_ANSWER_REQUIRED_FIELDS = ("sub_question", "classification", "source", "answer")
 _MAX_FEEDBACK_CHARS = 2000
 _ALLOWED_CLASSIFICATIONS = {
     "hit",

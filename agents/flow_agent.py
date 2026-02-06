@@ -11,6 +11,8 @@ from core.prompt_loader import load_prompt_yaml
 from llm_connect.utils import create_llm_client_from_profile
 from llm_connect.config import get_llm_params, get_model_name
 
+_JSON_CODE_FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)```", re.MULTILINE)
+
 
 class FlowAgent:
     """Agent that generates flow.json DAG via LLM."""
@@ -53,34 +55,99 @@ class FlowAgent:
         )
 
     def _extract_json(self, raw_response: str) -> tuple[Optional[dict], Optional[dict]]:
-        """Extract JSON from LLM response.
-        
-        Returns:
-            (flow_dict, parse_error) - one of them is None
-        """
-        # Try fenced JSON block first
-        match = re.search(r"```json\s*\n(.*?)\n```", raw_response, re.DOTALL)
-        json_text = match.group(1) if match else raw_response.strip()
+        """Extract JSON dict robustly from LLM response.
 
-        try:
-            flow_dict = json.loads(json_text)
-            if not isinstance(flow_dict, dict):
-                return None, {
-                    "type": "json_parse",
-                    "message": "Parsed JSON is not an object",
-                    "details": {"parsed_type": type(flow_dict).__name__},
-                }
-            return flow_dict, None
-        except json.JSONDecodeError as e:
+        Strategy:
+        1) Parse whole response as JSON.
+        2) Parse fenced blocks (```json ... ``` / ``` ... ```).
+        3) Parse balanced-brace JSON object candidates.
+        """
+        text = (raw_response or "").strip()
+        if not text:
             return None, {
                 "type": "json_parse",
-                "message": str(e),
-                "details": {
-                    "line": e.lineno,
-                    "column": e.colno,
-                    "pos": e.pos,
-                },
+                "message": "Empty response",
+                "details": {},
             }
+
+        def _parse_dict(candidate: str) -> Optional[dict]:
+            try:
+                parsed = json.loads(candidate)
+            except Exception:
+                return None
+            return parsed if isinstance(parsed, dict) else None
+
+        def _score(obj: dict) -> int:
+            # Prefer typical DAG-like payloads.
+            score = 0
+            if isinstance(obj.get("nodes"), list):
+                score += 3
+            if isinstance(obj.get("edges"), list):
+                score += 2
+            if isinstance(obj.get("steps"), list):
+                score += 1
+            return score
+
+        # 1) Whole-text parse.
+        whole = _parse_dict(text)
+        if whole is not None:
+            return whole, None
+
+        # 2) Fenced blocks.
+        fenced_candidates: list[dict] = []
+        for match in _JSON_CODE_FENCE_RE.finditer(text):
+            parsed = _parse_dict(match.group(1).strip())
+            if parsed is not None:
+                fenced_candidates.append(parsed)
+        if fenced_candidates:
+            fenced_candidates.sort(key=_score, reverse=True)
+            return fenced_candidates[0], None
+
+        # 3) Balanced-brace object extraction.
+        brace_candidates: list[dict] = []
+        i = 0
+        while i < len(text):
+            if text[i] != "{":
+                i += 1
+                continue
+            start = i
+            depth = 0
+            in_string = False
+            escape_next = False
+            for j in range(i, len(text)):
+                ch = text[j]
+                if escape_next:
+                    escape_next = False
+                    continue
+                if in_string and ch == "\\":
+                    escape_next = True
+                    continue
+                if ch == '"':
+                    in_string = not in_string
+                    continue
+                if in_string:
+                    continue
+                if ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                    if depth == 0:
+                        parsed = _parse_dict(text[start : j + 1])
+                        if parsed is not None:
+                            brace_candidates.append(parsed)
+                        i = j
+                        break
+            i += 1
+
+        if brace_candidates:
+            brace_candidates.sort(key=_score, reverse=True)
+            return brace_candidates[0], None
+
+        return None, {
+            "type": "json_parse",
+            "message": "Failed to extract valid JSON object from model response",
+            "details": {},
+        }
 
     def _validate_dag(self, flow_dict: dict) -> Optional[dict]:
         """Validate flow_dict using py2flow IR.

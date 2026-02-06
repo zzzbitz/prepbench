@@ -25,9 +25,19 @@ DEFAULT_RETRY_CONFIG = {
 }
 
 
-class OpenRouterLLMClient:
+def _join_chat_completions_url(base_url: str) -> str:
+    trimmed = (base_url or "").strip()
+    if not trimmed:
+        raise ValueError("base_url must be a non-empty string")
+    trimmed = trimmed.rstrip("/")
+    if trimmed.endswith("/chat/completions"):
+        return trimmed
+    return f"{trimmed}/chat/completions"
+
+
+class OpenAICompatibleChatClient:
     """
-    OpenRouter LLM client with built-in retry for transient errors.
+    OpenAI-compatible chat completions client with built-in retry for transient errors.
     Interface: generate(messages, temperature, max_tokens, timeout) -> str
     """
 
@@ -39,14 +49,17 @@ class OpenRouterLLMClient:
         self,
         api_key: Optional[str] = None,
         model_name: Optional[str] = None,
+        base_url: str = "https://api.openai.com/v1",
         http_referer: Optional[str] = None,
         x_title: Optional[str] = None,
         retry_config: Optional[Dict] = None,
     ):
         self.api_key = api_key or ""
         if not self.api_key:
-            raise RuntimeError("OpenRouter API Key not provided")
+            raise RuntimeError("API key not provided")
         self.model_name = model_name
+        self.base_url = base_url
+        self.chat_completions_url = _join_chat_completions_url(base_url)
         self.http_referer = http_referer
         self.x_title = x_title
         self.retry_cfg = {**DEFAULT_RETRY_CONFIG, **(retry_config or {})}
@@ -170,7 +183,7 @@ class OpenRouterLLMClient:
             try:
                 session = self._get_session()
                 response = session.post(
-                    url="https://openrouter.ai/api/v1/chat/completions",
+                    url=self.chat_completions_url,
                     headers=headers,
                     data=json.dumps(payload),
                     timeout=timeout,
@@ -295,4 +308,26 @@ class OpenRouterLLMClient:
         )
 
 
-atexit.register(OpenRouterLLMClient._close_registered_sessions)
+class OpenRouterLLMClient(OpenAICompatibleChatClient):
+    """Backward-compatible alias for OpenRouter usage."""
+
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        model_name: Optional[str] = None,
+        http_referer: Optional[str] = None,
+        x_title: Optional[str] = None,
+        retry_config: Optional[Dict] = None,
+        base_url: Optional[str] = None,
+    ):
+        super().__init__(
+            api_key=api_key,
+            model_name=model_name,
+            base_url=base_url or "https://openrouter.ai/api/v1",
+            http_referer=http_referer,
+            x_title=x_title,
+            retry_config=retry_config,
+        )
+
+
+atexit.register(OpenAICompatibleChatClient._close_registered_sessions)
