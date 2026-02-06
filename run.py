@@ -13,6 +13,7 @@ from core.orchestrator import Orchestrator
 from config.experiment_config import ExperimentConfig
 from core.utils.paths import get_output_path
 from core.utils.logging_config import configure_logging, get_logger
+from core.orchestration.mode_spec import allowed_run_modes
 from llm_connect.config import validate_clarifier_settings
 
 T = TypeVar("T")
@@ -294,7 +295,7 @@ def run_single_case(
                     if path.exists():
                         path.unlink()
                 print(f"[{case_path.name}][{config.run_mode}][{config.model_name}] Cleaned flow outputs for continuation: {output_path}")
-            elif config.run_mode in ("orig", "disamb", "profile", "raw_profile") and _valid_profile_cache(profile_summary):
+            elif config.run_mode in ("orig", "disamb") and _valid_profile_cache(profile_summary):
                 rounds_dir = output_path / "rounds"
                 solution_dir = output_path / "solution"
                 if rounds_dir.exists():
@@ -371,10 +372,10 @@ def main():
             run_modes = [cfg_mode]
 
     run_modes = dedupe_preserve_order(run_modes)
-    allowed_run_modes = {"orig", "disamb", "interact", "disamb_only", "e2e", "flow"}
-    invalid_run_modes = [m for m in run_modes if m not in allowed_run_modes]
+    allowed_modes = set(allowed_run_modes())
+    invalid_run_modes = [m for m in run_modes if m not in allowed_modes]
     if invalid_run_modes:
-        print(f"Error: Unknown --run_mode values: {invalid_run_modes}. Allowed: {sorted(allowed_run_modes)}")
+        print(f"Error: Unknown --run_mode values: {invalid_run_modes}. Allowed: {sorted(allowed_modes)}")
         sys.exit(1)
     if not run_modes:
         print("Error: run_mode is empty. Provide --run_mode or set experiment.run_mode in config/settings.yaml.")

@@ -3,6 +3,8 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
+from core.orchestration.mode_spec import get_mode_spec
+
 
 def summarize_eval(eval_report: dict) -> dict:
     return {
@@ -18,21 +20,14 @@ def resolve_query_path(
     run_mode: str,
 ) -> Path:
     """Resolve query file path based on run_mode.
-    
-    - disamb/disamb_only/full/cleanspec/profile: uses query_full.md
-    - orig/raw/raw_profile/interact/e2e/flow: uses query.md
+
+    - disamb/disamb_only: uses query_full.md
+    - orig/interact/e2e/flow: uses query.md
     """
-    if run_mode in ("disamb", "disamb_only", "full", "cleanspec", "profile"):
+    spec = get_mode_spec(run_mode)
+    if spec.query_source == "query_full":
         return tdir / "query_full.md"
-
-    if run_mode in ("orig", "raw", "raw_profile", "interact", "e2e", "flow"):
-        return tdir / "query.md"
-
-    raise ValueError(
-        "Unknown run_mode: "
-        f"{run_mode}. Expected one of "
-        "['orig','disamb','disamb_only','raw','raw_profile','full','cleanspec','profile','interact','e2e','flow']."
-    )
+    return tdir / "query.md"
 
 
 def copy_solution_artifacts(final_solution_src: Path, final_solution_dst: Path) -> None:

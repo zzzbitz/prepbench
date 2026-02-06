@@ -3,87 +3,21 @@ from __future__ import annotations
 import dataclasses
 import json
 import math
-import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-_SOLVE_FUNC_RE = re.compile(r"^\s*(?:async\s+)?def\s+solve\s*\(", re.MULTILINE)
-_LABELED_Q_RE = re.compile(r"^(?:q|Q)?(\d+)\s*[:\.\)]\s*(.+)$")
-
-
-def parse_sub_questions(payload: str) -> tuple[list[str], str]:
-    """Parse sub-questions from Ask payload.
-    
-    Returns:
-        (list of questions, parse method: "labeled"|"semicolon"|"single")
-    """
-    lines = [ln.strip() for ln in payload.splitlines() if ln.strip()]
-    
-    # Try labeled format: q1: ..., 1: ..., 1) ..., etc.
-    labeled: list[str] = []
-    current_q: list[str] = []
-    
-    for ln in lines:
-        m = _LABELED_Q_RE.match(ln)
-        if m:
-            # Save previous question if any
-            if current_q:
-                labeled.append(" ".join(current_q))
-                current_q = []
-            current_q.append(m.group(2).strip())
-        elif current_q:
-            # Continuation line - append to current question
-            current_q.append(ln)
-    
-    # Don't forget the last question
-    if current_q:
-        labeled.append(" ".join(current_q))
-    
-    if labeled:
-        return labeled, "labeled"
-    
-    # Fallback: semicolon separation
-    subs = [q.strip() for q in payload.split(";") if q.strip()]
-    if len(subs) > 1:
-        return subs, "semicolon"
-    
-    # Single question
-    return [payload.strip()], "single"
-
-def _normalize_question_for_match(s: str) -> str:
-    return re.sub(r"\s+", " ", (s or "").strip().lower())
-
-def _validate_clarifier_alignment(
-    *,
-    expected_sub_questions: list[str],
-    clarifier_answers: list[dict],
-) -> tuple[bool, str]:
-    if not expected_sub_questions:
-        return True, ""
-    if len(clarifier_answers) != len(expected_sub_questions):
-        return False, f"answer_count_mismatch: expected={len(expected_sub_questions)} got={len(clarifier_answers)}"
-    for i, exp in enumerate(expected_sub_questions):
-        ans = clarifier_answers[i] or {}
-        sq = ans.get("sub_question", "")
-        if not isinstance(sq, str) or not sq.strip():
-            return False, f"missing_sub_question_at_index={i}"
-        if _normalize_question_for_match(sq) != _normalize_question_for_match(exp):
-            return False, f"sub_question_mismatch_at_index={i}"
-        a = ans.get("answer", "")
-        if not isinstance(a, str) or not a.strip():
-            return False, f"empty_answer_at_index={i}"
-    return True, ""
-
 from agents.code_agent import CodeAgent
 from agents.prep_agent import PrepAgent
 from agents.clarifier_agent import ClarifierAgent
-from agents.flow_agent import FlowAgent
 from core.utils.paths import get_output_path
-from agents.profile_agent import ProfileAgent
 from .executor import CodeExecutor
 from config.experiment_config import ExperimentConfig
-from core.orchestration.common import copy_solution_artifacts, resolve_query_path, summarize_eval
+from core.orchestration.common import copy_solution_artifacts, resolve_query_path
+from core.orchestration.clarify_parse import parse_sub_questions, validate_clarifier_alignment
+from core.orchestration.flow_phase import run_flow_impl
+from core.orchestration.mode_spec import allowed_run_modes
+from core.orchestration.profile_phase import run_profile_phase
 from core.utils.exec_utils import render_main_with_solve
 
 
@@ -479,7 +413,7 @@ class Orchestrator:
                     }
 
                 clar_answer_dicts = [_to_answer_dict(a) for a in (clar.answers or [])]
-                ok_align, align_err = _validate_clarifier_alignment(
+                ok_align, align_err = validate_clarifier_alignment(
                     expected_sub_questions=expected_sub_questions,
                     clarifier_answers=clar_answer_dicts,
                 )
@@ -520,7 +454,7 @@ class Orchestrator:
                     (round_dir / "clarifier_retry_raw.txt").write_text(clar_retry.raw_response or "", encoding="utf-8")
                     clar = clar_retry
                     clar_answer_dicts = [_to_answer_dict(a) for a in (clar.answers or [])]
-                    ok_align, align_err = _validate_clarifier_alignment(
+                    ok_align, align_err = validate_clarifier_alignment(
                         expected_sub_questions=expected_sub_questions,
                         clarifier_answers=clar_answer_dicts,
                     )
@@ -1219,232 +1153,15 @@ class Orchestrator:
         inputs: list[str],
         inputs_preview: Dict[str, Any],
     ) -> dict[str, Any]:
-        """Two-round profile flow with LLM decision.
-        
-        Round 1: Generate code → Execute → LLM decides (SUMMARY or CODE)
-        Round 2 (optional): If CODE and max_rounds >= 2, execute new code → LLM summarizes
-        
-        If max_rounds == 1, CODE decisions are overridden to SUMMARY.
-        """
-        profile_root = output_root / "profile"
-        profile_root.mkdir(parents=True, exist_ok=True)
-
-        profile_agent = ProfileAgent(config.model_name)
-        executor = CodeExecutor()
-        input_files = {p.name: p for p in sorted(input_dir.glob("*.csv"))}
-        
-        session_state = {
-            "task_dir": str(tdir),
-            "query": query_text,
-            "inputs": inputs,
-            "inputs_preview": inputs_preview,
-        }
-        
-        max_rounds = config.profile.max_rounds
-        max_summary_chars = config.profile.max_summary_chars
-        
-        rounds_data: list[dict] = []
-        final_summary = ""
-        final_error: Optional[str] = None
-
-        # ========== Round 1: Generate and Execute ==========
-        round1_dir = profile_root / "round-1"
-        round1_dir.mkdir(parents=True, exist_ok=True)
-        
-        try:
-            code1, raw1, msgs1 = profile_agent.generate_profile_code(session_state)
-        except Exception as e:
-            final_error = f"round1_codegen_failed: {e}"
-            (profile_root / "error.txt").write_text(final_error, encoding="utf-8")
-            self._save_profile_summary(profile_root, "", final_error, [], {})
-            return {"summary": "", "error": final_error, "rounds": []}
-
-        # Save round 1 generation artifacts
-        if code1:
-            (round1_dir / "code.py").write_text(code1, encoding="utf-8")
-        (round1_dir / "messages.json").write_text(
-            json.dumps(msgs1, ensure_ascii=False, indent=2), encoding="utf-8"
+        return run_profile_phase(
+            tdir=tdir,
+            config=config,
+            output_root=output_root,
+            query_text=query_text,
+            input_dir=input_dir,
+            inputs=inputs,
+            inputs_preview=inputs_preview,
         )
-        (round1_dir / "raw_response.txt").write_text(raw1 or "", encoding="utf-8")
-
-        if not code1:
-            final_error = "round1_no_code_generated"
-            exec1 = {"ok": False, "stderr": "ProfileAgent generated no code", "stdout": "", "rc": 1}
-            (round1_dir / "execution.json").write_text(
-                json.dumps(exec1, ensure_ascii=False, indent=2), encoding="utf-8"
-            )
-            self._save_profile_summary(profile_root, "", final_error, [], {})
-            return {"summary": "", "error": final_error, "rounds": []}
-
-        # Execute round 1
-        ok1, stderr1, stdout1, _ = executor.execute_code(
-            code1, input_files, timeout=config.timeout, work_dir=round1_dir
-        )
-        # Fallback: read cand/profile_summary.json if stdout is empty
-        effective_stdout1 = self._get_effective_stdout(stdout1, round1_dir)
-        exec1 = {"ok": ok1, "stderr": stderr1, "stdout": effective_stdout1, "rc": 0 if ok1 else 1}
-        (round1_dir / "execution.json").write_text(
-            json.dumps(exec1, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
-        rounds_data.append({"round": 1, "execution": exec1})
-
-        # ========== Decision: SUMMARY or CODE ==========
-        decision_overridden = False
-        try:
-            decision, content, raw_dec, msgs_dec = profile_agent.decide_or_summarize(
-                session_state, exec1, max_summary_chars
-            )
-        except Exception as e:
-            final_error = f"decision_failed: {e}"
-            # Fall back to using effective stdout as summary
-            if ok1 and effective_stdout1:
-                final_summary = effective_stdout1.strip()[:max_summary_chars]
-            self._save_profile_summary(profile_root, final_summary, final_error, rounds_data, {})
-            return {"summary": final_summary, "error": final_error, "rounds": rounds_data}
-
-        # Enforce max_rounds: if max_rounds < 2 and decision is CODE, override to SUMMARY
-        original_decision = decision
-        if decision == "CODE" and max_rounds < 2:
-            decision = "SUMMARY"
-            decision_overridden = True
-            # If content was code, we need to generate summary from execution output
-            if effective_stdout1:
-                content = effective_stdout1.strip()
-            else:
-                content = f"Profiling completed. Output: {stderr1[:500] if stderr1 else 'No output'}"
-
-        # Save decision artifacts
-        (round1_dir / "decision_raw.txt").write_text(raw_dec or "", encoding="utf-8")
-        (round1_dir / "decision_messages.json").write_text(
-            json.dumps(msgs_dec, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
-        decision_info = {
-            "decision": decision,
-            "original_decision": original_decision,
-            "decision_overridden": decision_overridden,
-            "override_reason": "max_rounds < 2" if decision_overridden else None,
-            "content_preview": content[:500] if content else "",
-        }
-        (round1_dir / "decision.json").write_text(
-            json.dumps(decision_info, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
-
-        if decision == "SUMMARY":
-            # Use summary directly, skip round 2
-            final_summary = content[:max_summary_chars] if content else ""
-            self._save_profile_summary(
-                profile_root, final_summary, None, rounds_data,
-                {"decision_overridden": decision_overridden}
-            )
-            return {"summary": final_summary, "error": None, "rounds": rounds_data}
-
-        # ========== Round 2: Execute new code ==========
-        round2_dir = profile_root / "round-2"
-        round2_dir.mkdir(parents=True, exist_ok=True)
-        
-        code2 = content  # Decision returned new code
-        if not code2:
-            final_error = "round2_no_code_from_decision"
-            self._save_profile_summary(profile_root, "", final_error, rounds_data, {})
-            return {"summary": "", "error": final_error, "rounds": rounds_data}
-
-        (round2_dir / "code.py").write_text(code2, encoding="utf-8")
-        
-        ok2, stderr2, stdout2, _ = executor.execute_code(
-            code2, input_files, timeout=config.timeout, work_dir=round2_dir
-        )
-        # Fallback: read cand/profile_summary.json if stdout is empty
-        effective_stdout2 = self._get_effective_stdout(stdout2, round2_dir)
-        exec2 = {"ok": ok2, "stderr": stderr2, "stdout": effective_stdout2, "rc": 0 if ok2 else 1}
-        (round2_dir / "execution.json").write_text(
-            json.dumps(exec2, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
-        rounds_data.append({"round": 2, "execution": exec2})
-
-        # ========== Final Summarize ==========
-        try:
-            summary, raw_sum, msgs_sum = profile_agent.summarize(
-                session_state, exec1, exec2, max_summary_chars
-            )
-        except Exception as e:
-            final_error = f"summarize_failed: {e}"
-            # Fall back: use round 2 effective stdout if available
-            if ok2 and effective_stdout2:
-                final_summary = effective_stdout2.strip()[:max_summary_chars]
-            elif ok1 and effective_stdout1:
-                final_summary = effective_stdout1.strip()[:max_summary_chars]
-            self._save_profile_summary(profile_root, final_summary, final_error, rounds_data, {})
-            return {"summary": final_summary, "error": final_error, "rounds": rounds_data}
-
-        # Save summarize artifacts
-        (round2_dir / "summary_raw.txt").write_text(raw_sum or "", encoding="utf-8")
-        (round2_dir / "summary_messages.json").write_text(
-            json.dumps(msgs_sum, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
-        
-        final_summary = summary[:max_summary_chars] if summary else ""
-        self._save_profile_summary(profile_root, final_summary, None, rounds_data, {})
-        
-        return {
-            "summary": final_summary,
-            "error": None,
-            "rounds": rounds_data,
-        }
-
-    def _get_effective_stdout(self, stdout: str, work_dir: Path) -> str:
-        """Get effective stdout, falling back to cand/profile_summary.json when useful."""
-        text = stdout or ""
-        if text.strip():
-            if self._looks_like_json(text):
-                return text
-            cand_text = self._read_cand_profile_summary(work_dir)
-            if cand_text:
-                return cand_text
-            return text
-        cand_text = self._read_cand_profile_summary(work_dir)
-        return cand_text or text
-
-    def _read_cand_profile_summary(self, work_dir: Path) -> str:
-        cand_path = work_dir / "cand" / "profile_summary.json"
-        if cand_path.exists():
-            try:
-                return cand_path.read_text(encoding="utf-8")
-            except Exception:
-                return ""
-        return ""
-
-    def _looks_like_json(self, text: str) -> bool:
-        stripped = text.lstrip()
-        if not stripped or stripped[0] not in "{[":
-            return False
-        try:
-            json.loads(stripped)
-        except Exception:
-            return False
-        return True
-
-    def _save_profile_summary(
-        self,
-        profile_root: Path,
-        summary: str,
-        error: Optional[str],
-        rounds_data: list[dict],
-        metadata: dict,
-    ) -> None:
-        """Save final profile summary and metadata."""
-        payload = {
-            "summary": summary,
-            "error": error,
-            "rounds": len(rounds_data),
-            **metadata,
-        }
-        (profile_root / "summary.json").write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
-        if summary:
-            (profile_root / "summary.txt").write_text(summary, encoding="utf-8")
-        if error:
-            (profile_root / "error.txt").write_text(error, encoding="utf-8")
 
     def _run_profile(self, tdir: Path, config: ExperimentConfig) -> Dict[str, Any]:
         from core.data_head import DataHead
@@ -1562,357 +1279,12 @@ class Orchestrator:
         output_root: Path,
         solution_text: str,
     ) -> Dict[str, Any]:
-        """Shared flow execution logic for flow mode and e2e."""
-        import time
-        import shutil
-        from py2flow.ir import DAG
-        from py2flow.executor import DAGExecutor, DebugConfig
-        from py2flow.errors import FlowExecutionError, FlowValidationError
-
-        # ========== Preflight checks ==========
-        input_dir = tdir / "inputs"
-        if not input_dir.is_dir():
-            raise FileNotFoundError(f"[flow mode] inputs/ directory not found: {tdir}")
-
-        if not isinstance(solution_text, str) or not solution_text.strip():
-            raise FileNotFoundError("[flow mode] solution.py content is empty")
-
-        cfg = config
-
-        # ========== Setup output directories ==========
-        output_root.mkdir(parents=True, exist_ok=True)
-        rounds_root = output_root / "rounds"
-
-        # ========== Build session state ==========
-        session_state = {
-            "task_dir": str(tdir),
-            "input_dir": str(input_dir),
-            "model_name": cfg.model_name,
-            "run_mode": cfg.run_mode,
-            "output_root": str(output_root),
-            "case_name": tdir.name,
-            "solution_text": solution_text,
-        }
-
-        # ========== Multi-round execution loop ==========
-        max_rounds = getattr(cfg, "max_rounds_debug", 3)
-        flow_agent = FlowAgent(model_name=cfg.model_name)
-
-        feedback = None
-        stopped_reason = "unknown"
-        passed = False
-        exec_info = {"ok": False, "rc": 1, "stderr": "", "stdout": "", "took_sec": 0}
-        eval_report = {"passed": False, "errors": [], "diff_summary": {}}
-        final_solution_dir: Optional[Path] = None
-        hist: list[dict[str, Any]] = []
-
-        def _write_solution_artifacts(solution_dir: Path, exec_info: dict, eval_report: dict) -> None:
-            (solution_dir / "execution.json").write_text(
-                json.dumps(exec_info, ensure_ascii=False, indent=2), encoding="utf-8"
-            )
-            (solution_dir / "evaluation.json").write_text(
-                json.dumps(eval_report, ensure_ascii=False, indent=2), encoding="utf-8"
-            )
-
-        for round_num in range(1, max_rounds + 1):
-            round_dir = rounds_root / f"round-{round_num}"
-            round_dir.mkdir(parents=True, exist_ok=True)
-            solution_dir = round_dir / "solution"
-            solution_dir.mkdir(parents=True, exist_ok=True)
-
-            final_solution_dir = solution_dir
-
-            protocol = {
-                "benchmark": "code_to_flow",
-                "agent_input": ["solution.py"],
-                "agent_input_excludes": ["query.md", "query_full.md", "inputs_preview", "gt/allowed_outputs"],
-                "feedback_enabled_for": ["json_parse", "validation", "execution", "no_outputs"],
-                "evaluation_feedback_to_agent": False,
-                "stop_on_execution_success": True,
-                "case": tdir.name,
-                "model_under_test": cfg.model_name,
-                "max_rounds": max_rounds,
-                "round": round_num,
-            }
-            (round_dir / "protocol.json").write_text(
-                json.dumps(protocol, ensure_ascii=False, indent=2), encoding="utf-8"
-            )
-
-            # ========== Generate flow.json ==========
-            flow_dict, raw_response, messages, parse_error = flow_agent.generate_flow(
-                session_state, feedback=feedback
-            )
-
-            # Save LLM artifacts
-            (round_dir / "messages.json").write_text(
-                json.dumps(messages, ensure_ascii=False, indent=2), encoding="utf-8"
-            )
-            (round_dir / "raw_response.txt").write_text(raw_response or "", encoding="utf-8")
-
-            # Handle parse error
-            if parse_error:
-                (round_dir / "flow_parse_error.json").write_text(
-                    json.dumps(parse_error, ensure_ascii=False, indent=2), encoding="utf-8"
-                )
-                stopped_reason = "execerror"
-                exec_info = {
-                    "ok": False, "rc": 1,
-                    "stderr": f"Flow generation failed: {parse_error.get('message', '')}",
-                    "stdout": "", "took_sec": 0
-                }
-                eval_report = {
-                    "passed": False,
-                    "errors": [{"error_type": "flowgen_failed", "message": exec_info["stderr"], "details": parse_error}],
-                    "diff_summary": {},
-                }
-                _write_solution_artifacts(solution_dir, exec_info, eval_report)
-                feedback = {
-                    "type": parse_error.get("type", "json_parse"),
-                    "message": parse_error.get("message", ""),
-                    "details": parse_error.get("details", {}),
-                }
-                hist.append({"round": round_num, "passed": False, "stopped_reason": stopped_reason})
-                continue
-
-            # Save valid flow.json
-            (round_dir / "flow.json").write_text(
-                json.dumps(flow_dict, ensure_ascii=False, indent=2), encoding="utf-8"
-            )
-            (solution_dir / "flow.json").write_text(
-                json.dumps(flow_dict, ensure_ascii=False, indent=2), encoding="utf-8"
-            )
-
-            # ========== Execute DAG ==========
-            try:
-                dag = DAG.from_dict(flow_dict)
-
-                # ========== Validate script constraints ==========
-                from py2flow.flow_constraints import validate_script_constraints
-
-                is_valid, constraint_err, err_details = validate_script_constraints(flow_dict)
-                if not is_valid:
-                    stopped_reason = "execerror"
-                    exec_info = {
-                        "ok": False, "rc": 1,
-                        "stderr": constraint_err,
-                        "stdout": "", "took_sec": 0
-                    }
-                    (round_dir / "flow_constraint_violation.json").write_text(
-                        json.dumps(err_details, ensure_ascii=False, indent=2),
-                        encoding="utf-8"
-                    )
-                    feedback = {
-                        "type": "validation",
-                        "message": constraint_err,
-                        "details": err_details,
-                    }
-                    eval_report = {
-                        "passed": False,
-                        "errors": [{
-                            "error_type": "script_constraint_violation",
-                            "message": constraint_err,
-                            "details": err_details
-                        }],
-                        "diff_summary": {},
-                    }
-                    _write_solution_artifacts(solution_dir, exec_info, eval_report)
-                    hist.append({"round": round_num, "passed": False, "stopped_reason": stopped_reason})
-                    continue
-
-                debug_cfg = DebugConfig(on_fail_dump=True)
-
-                # Create symlink from solution_dir/inputs → tdir/inputs
-                inputs_link = solution_dir / "inputs"
-                if not inputs_link.exists():
-                    try:
-                        inputs_link.symlink_to(tdir / "inputs")
-                    except OSError:
-                        shutil.copytree(tdir / "inputs", inputs_link)
-
-                executor = DAGExecutor(dag, base_path=solution_dir, debug=debug_cfg)
-
-                start_time = time.time()
-                executor.run(keep="none")
-                took_sec = time.time() - start_time
-
-                exec_info = {"ok": True, "rc": 0, "stderr": "", "stdout": "", "took_sec": took_sec}
-
-                # Execution succeeded in run phase. Correctness evaluation is deferred.
-                cand_dir = solution_dir / "flow_cand"
-                output_files = sorted(cand_dir.glob("*.csv")) if cand_dir.exists() else []
-
-                if not cand_dir.exists() or not output_files:
-                    stopped_reason = "execerror"
-                    exec_info["stderr"] = "No flow CSV outputs produced under flow_cand."
-                    exec_info["ok"] = False
-                    exec_info["rc"] = 1
-                    eval_report = {
-                        "passed": False,
-                        "errors": [{"error_type": "no_outputs", "message": exec_info["stderr"]}],
-                        "diff_summary": {},
-                    }
-                    _write_solution_artifacts(solution_dir, exec_info, eval_report)
-                    feedback = {
-                        "type": "execution",
-                        "message": "No output files were created. Ensure all Output nodes write CSV files to flow_cand/.",
-                        "details": {},
-                    }
-                    hist.append({"round": round_num, "passed": False, "stopped_reason": stopped_reason})
-                    continue
-
-                passed = True
-                eval_report = {
-                    "passed": True,
-                    "errors": [],
-                    "diff_summary": {},
-                    "note": "evaluation_skipped_in_run_phase",
-                }
-                stopped_reason = "execok"
-                _write_solution_artifacts(solution_dir, exec_info, eval_report)
-                hist.append({"round": round_num, "passed": True, "stopped_reason": stopped_reason})
-
-                # Stop immediately once execution succeeds (do not iterate using evaluation feedback).
-                break
-
-            except FlowValidationError as e:
-                stopped_reason = "execerror"
-                exec_info = {
-                    "ok": False, "rc": 1,
-                    "stderr": str(e),
-                    "stdout": "", "took_sec": 0
-                }
-                (round_dir / "flow_parse_error.json").write_text(
-                    json.dumps({
-                        "type": "validation",
-                        "message": str(e),
-                        "details": {
-                            "error_code": getattr(e, "error_code", None),
-                            "node_id": getattr(e, "node_id", None),
-                            "step_kind": str(getattr(e, "step_kind", "")) if hasattr(e, "step_kind") else None,
-                            "field": getattr(e, "field", None),
-                        }
-                    }, ensure_ascii=False, indent=2), encoding="utf-8"
-                )
-                feedback = {
-                    "type": "validation",
-                    "message": str(e),
-                    "details": {
-                        "error_code": getattr(e, "error_code", None),
-                        "node_id": getattr(e, "node_id", None),
-                    },
-                }
-                eval_report = {
-                    "passed": False,
-                    "errors": [{"error_type": "flowgen_failed", "message": str(e)}],
-                    "diff_summary": {},
-                }
-                _write_solution_artifacts(solution_dir, exec_info, eval_report)
-                hist.append({"round": round_num, "passed": False, "stopped_reason": stopped_reason})
-                continue
-
-            except FlowExecutionError as e:
-                stopped_reason = "execerror"
-                exec_info = {
-                    "ok": False, "rc": 1,
-                    "stderr": str(e),
-                    "stdout": "", "took_sec": 0,
-                    "failed_node": getattr(e, "node_id", None),
-                }
-                feedback = {
-                    "type": "execution",
-                    "message": str(e),
-                    "details": {
-                        "node_id": getattr(e, "node_id", None),
-                        "error": str(e),
-                    },
-                }
-                eval_report = {
-                    "passed": False,
-                    "errors": [{"error_type": "execution_failed", "message": str(e)}],
-                    "diff_summary": {},
-                }
-                _write_solution_artifacts(solution_dir, exec_info, eval_report)
-                hist.append({"round": round_num, "passed": False, "stopped_reason": stopped_reason})
-                continue
-
-            except Exception as e:
-                stopped_reason = "execerror"
-                exec_info = {"ok": False, "rc": 1, "stderr": str(e), "stdout": "", "took_sec": 0}
-                feedback = {
-                    "type": "execution",
-                    "message": str(e),
-                    "details": {},
-                }
-                eval_report = {
-                    "passed": False,
-                    "errors": [{"error_type": "execution_failed", "message": str(e)}],
-                    "diff_summary": {},
-                }
-                _write_solution_artifacts(solution_dir, exec_info, eval_report)
-                hist.append({"round": round_num, "passed": False, "stopped_reason": stopped_reason})
-                continue
-
-        # ========== Save final artifacts ==========
-        if final_solution_dir:
-            (final_solution_dir / "execution.json").write_text(
-                json.dumps(exec_info, ensure_ascii=False, indent=2), encoding="utf-8"
-            )
-            (final_solution_dir / "evaluation.json").write_text(
-                json.dumps(eval_report, ensure_ascii=False, indent=2), encoding="utf-8"
-            )
-
-            summary = summarize_eval(eval_report)
-            (final_solution_dir / "solution_summary.json").write_text(
-                json.dumps({"passed": passed, "summary": summary}, ensure_ascii=False, indent=2),
-                encoding="utf-8",
-            )
-
-        # ========== Finalize ==========
-        final_solution_dst = output_root / "solution"
-        final_solution_dst.mkdir(parents=True, exist_ok=True)
-
-        # Copy artifacts from final round to solution directory
-        if final_solution_dir:
-            copy_solution_artifacts(final_solution_dir, final_solution_dst)
-
-        # Determine final ok status: exec_info.ok means execution succeeded
-        final_ok = exec_info.get("ok", False)
-
-        final_status = {
-            "ok": final_ok,
-            "rc": exec_info.get("rc", 1),
-            "passed": passed,
-            "reason": stopped_reason,
-            "rounds_used": len(hist),
-            "message": "" if final_ok else exec_info.get("stderr", ""),
-        }
-        (final_solution_dst / "final_status.json").write_text(
-            json.dumps(final_status, ensure_ascii=False, indent=2), encoding="utf-8"
+        return run_flow_impl(
+            tdir=tdir,
+            config=config,
+            output_root=output_root,
+            solution_text=solution_text,
         )
-        (final_solution_dst / "protocol.json").write_text(
-            json.dumps(
-                {
-                    "benchmark": "code_to_flow",
-                    "agent_input": ["solution.py"],
-                    "agent_input_excludes": ["query.md", "query_full.md", "inputs_preview", "gt/allowed_outputs"],
-                    "feedback_enabled_for": ["json_parse", "validation", "execution", "no_outputs"],
-                    "evaluation_feedback_to_agent": False,
-                    "stop_on_execution_success": True,
-                    "case": tdir.name,
-                    "model_under_test": cfg.model_name,
-                },
-                ensure_ascii=False,
-                indent=2,
-            ),
-            encoding="utf-8",
-        )
-
-        return {
-            "passed": passed,
-            "rounds": len(hist),
-            "history": hist,
-            "stopped_reason": stopped_reason,
-        }
 
     def _run_flow(self, tdir: Path, config: ExperimentConfig) -> Dict[str, Any]:
         """Run flow mode: FlowAgent generates flow.json, DAGExecutor runs it.
@@ -1952,31 +1324,12 @@ class Orchestrator:
             tracker.save(output_root / "token_usage.json")
             set_tracker(None)
 
-    def run(
-        self,
-        task_dir: str,
-        *,
-        config: Optional[ExperimentConfig] = None,
-    ) -> Dict[str, Any]:
-        tdir = Path(task_dir).resolve()
-        
-        # Load config if not provided
-        if config is None:
-            config = ExperimentConfig.load_config()
-
-        if config.run_mode == "flow":
-            return self._run_flow(tdir, config)
-        elif config.run_mode in ("orig", "disamb", "profile", "raw_profile"):
-            return self._run_profile(tdir, config)
-        elif config.run_mode == "interact":
-            return self._run_interact(tdir, config)
-        elif config.run_mode == "e2e":
-            return self._run_e2e(tdir, config, with_flow=True)
-            
-        # ========== Raw/Full Mode: Direct Code Generation ==========
-        from core.utils.paths import get_output_path
-        
+    def _run_code_only(self, tdir: Path, config: ExperimentConfig) -> Dict[str, Any]:
+        """Run code generation only (no clarify/profile/flow)."""
         output_root = get_output_path(tdir, config)
+        query_md_path = resolve_query_path(tdir, run_mode=config.run_mode)
+        if not query_md_path.exists():
+            raise FileNotFoundError(f"Query file not found: {query_md_path} (run_mode={config.run_mode})")
 
         session_state = {
             "task_dir": str(tdir),
@@ -1984,59 +1337,53 @@ class Orchestrator:
             "model_name": config.model_name,
             "run_mode": config.run_mode,
             "output_root": str(output_root),
-            "query": "",
+            "query": query_md_path.read_text(encoding="utf-8"),
         }
 
-        repo_root = Path(__file__).resolve().parents[1]
-        query_md_path = resolve_query_path(
-            tdir,
-            run_mode=config.run_mode,
-        )
-        if not query_md_path.exists():
-            raise FileNotFoundError(f"Query file not found: {query_md_path} (run_mode={config.run_mode})")
-                 
-        session_state["query"] = query_md_path.read_text(encoding="utf-8")
-        if config.run_mode == "cleanspec":
-            from core.utils.dirty_case import load_dirty_case_entries, build_cleanspec_appendix_for_case
-            dirty_entries = load_dirty_case_entries(repo_root)
-            appendix = build_cleanspec_appendix_for_case(dirty_entries, tdir.name)
-            if not appendix:
-                raise FileNotFoundError(
-                    f"CleanSpec entry not found for case: {tdir.name} (run_mode={config.run_mode})"
-                )
-            session_state["cleanspec_appendix"] = appendix
-
-        # Initialize usage tracker (single code phase)
         from llm_connect.usage_tracker import UsageTracker, set_tracker
-        
-        prompt_price, completion_price = 0.0, 0.0
-        tracker = UsageTracker(
-            model=config.model_name,
-            prompt_price=prompt_price,
-            completion_price=completion_price,
-        )
+
+        tracker = UsageTracker(model=config.model_name, prompt_price=0.0, completion_price=0.0)
         set_tracker(tracker)
-        
         try:
             tracker.set_phase("code")
-            # Use shared code phase logic
             result = self._run_code_phase(
                 tdir=tdir,
                 config=config,
                 session_state=session_state,
                 output_root=output_root,
             )
-            
-            # Add last_eval for backward compatibility
             last_eval = {"passed": False}
             hist = result.get("history", [])
             if hist:
                 last_round = hist[-1]
                 if last_round.get("solution"):
                     last_eval = last_round["solution"].get("eval_summary", {"passed": False})
-            
             result["last_eval"] = last_eval
             return result
         finally:
             tracker.save(output_root / "token_usage.json")
             set_tracker(None)
+
+    def run(
+        self,
+        task_dir: str,
+        *,
+        config: Optional[ExperimentConfig] = None,
+    ) -> Dict[str, Any]:
+        tdir = Path(task_dir).resolve()
+        if config is None:
+            config = ExperimentConfig.load_config()
+
+        mode = str(config.run_mode or "").strip().lower()
+        if mode not in set(allowed_run_modes()):
+            raise ValueError(f"Unsupported run_mode '{config.run_mode}'. Allowed: {sorted(allowed_run_modes())}")
+
+        if mode == "flow":
+            return self._run_flow(tdir, config)
+        if mode in {"orig", "disamb"}:
+            return self._run_profile(tdir, config)
+        if mode == "interact":
+            return self._run_interact(tdir, config)
+        if mode == "e2e":
+            return self._run_e2e(tdir, config, with_flow=True)
+        return self._run_code_only(tdir, config)

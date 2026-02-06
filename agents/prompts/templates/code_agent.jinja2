@@ -13,13 +13,6 @@
 ## Task Description
 {{ context.query_md }}
 
-{%- if context.run_mode in ["cleanspec", "profile"] and context.cleanspec_appendix %}
-## CleanSpec Appendix
-This appendix contains required supplemental cleaning operations.
-Apply these rules in addition to the main specification.
-{{ context.cleanspec_appendix }}
-{%- endif %}
-
 ## Input Data
 ```json
 {
