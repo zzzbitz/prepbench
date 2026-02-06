@@ -29,8 +29,32 @@ Apply these rules in addition to the main specification.
 }
 ```
 
-{#- Mode-specific context (interact/e2e vs raw/full) -#}
-{%- block extra_context -%}{%- endblock -%}
+{#- Mode-specific context controlled by run-mode capabilities -#}
+{%- if context.allow_profile and context.profile_summary %}
+
+## Profile Agent Findings
+This is a profiling summary based on probing the input CSVs.
+Use it to guide parsing and cleaning rules, but do NOT hard-code specific data values.
+
+> [!NOTE]
+> This profile summary is a non-binding suggestion. If it conflicts with the
+> main task specification or clarification answers, the specification takes precedence.
+
+{{ context.profile_summary }}
+{%- endif %}
+
+{%- if context.allow_clarify and context.qa_history %}
+
+## User Clarifications
+These are authoritative answers from the clarify phase. Apply them as binding business rules.
+If they conflict with the input preview or profile insights, follow these clarifications.
+{% for qa in context.qa_history %}
+- **Q**: {{ qa.question }}
+  **A**: {{ qa.answer }}{% if qa.canonical_value %} (`{{ qa.canonical_value }}`){% endif %}
+
+{% endfor %}
+Use these clarifications to guide your implementation. They take precedence over default assumptions.
+{%- endif %}
 
 
 {#- Feedback Block (if any) -#}

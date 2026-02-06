@@ -12,6 +12,7 @@ from core.utils.code import extract_single_solution_from_raw
 from core.prompt_loader import load_prompt_yaml
 from llm_connect.utils import create_llm_client_from_profile
 from llm_connect.config import get_llm_params
+from core.orchestration.mode_spec import get_mode_spec
 
 
 class CodeAgent:
@@ -22,21 +23,16 @@ class CodeAgent:
         template_dir = Path(__file__).parent / "prompts" / "templates"
         self.jinja_env = Environment(loader=FileSystemLoader(template_dir), trim_blocks=True, lstrip_blocks=True)
 
-    @staticmethod
-    def _select_template_name(ctx: Dict[str, Any]) -> str:
-        """Select prompt template strictly by run_mode semantics."""
-        mode = str(ctx.get("run_mode") or "").strip().lower()
-        if mode in ("interact", "e2e"):
-            return "code_agent_e2e.jinja2"
-        if mode in ("orig", "disamb", "profile", "raw_profile"):
-            return "code_agent_profile.jinja2"
-        return "code_agent_raw.jinja2"
-
     def _collect_context(self, session_state: Dict[str, Any]) -> Dict:
+        mode = str(session_state.get("run_mode", ""))
+        spec = get_mode_spec(mode)
         ctx = {
             "task_dir": session_state["task_dir"],
             "query_md": session_state["query"],
-            "run_mode": session_state.get("run_mode", ""),
+            "run_mode": mode,
+            "allow_profile": spec.allow_profile,
+            "allow_clarify": spec.allow_clarify,
+            "allow_flow": spec.allow_flow,
         }
 
         tdir = Path(session_state["task_dir"])
@@ -63,8 +59,7 @@ class CodeAgent:
         """Builds the prompt using the Jinja2 template."""
         prompt_name = "code_agent"
         cfg = load_prompt_yaml(prompt_name)
-        template_name = self._select_template_name(ctx)
-        template = self.jinja_env.get_template(template_name)
+        template = self.jinja_env.get_template("code_agent.jinja2")
 
         # Render the template with all the context and feedback
         return template.render(
