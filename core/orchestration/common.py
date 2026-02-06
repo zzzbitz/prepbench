@@ -16,7 +16,6 @@ def resolve_query_path(
     tdir: Path,
     *,
     run_mode: str,
-    repo_root: Path,
 ) -> Path:
     """Resolve query file path based on run_mode.
     

@@ -189,7 +189,6 @@ class Orchestrator:
         data_head = DataHead()
         inputs_preview = data_head.get_preview(input_dir)
 
-        repo_root = Path(__file__).resolve().parents[1]
         query_full_path = tdir / "query_full.md"
         if not query_full_path.exists():
             raise FileNotFoundError(f"Query file not found: {query_full_path}")
@@ -198,7 +197,6 @@ class Orchestrator:
         query_md_path = resolve_query_path(
             tdir,
             run_mode=config.run_mode,
-            repo_root=repo_root,
         )
 
         if not query_md_path.exists():
@@ -1458,11 +1456,9 @@ class Orchestrator:
         inputs_preview = DataHead().get_preview(input_dir)
         inputs = [p.name for p in list_input_files(tdir)]
 
-        repo_root = Path(__file__).resolve().parents[1]
         query_md_path = resolve_query_path(
             tdir,
             run_mode=config.run_mode,
-            repo_root=repo_root,
         )
         if not query_md_path.exists():
             raise FileNotFoundError(f"Query file not found: {query_md_path} (run_mode={config.run_mode})")
@@ -1995,7 +1991,6 @@ class Orchestrator:
         query_md_path = resolve_query_path(
             tdir,
             run_mode=config.run_mode,
-            repo_root=repo_root,
         )
         if not query_md_path.exists():
             raise FileNotFoundError(f"Query file not found: {query_md_path} (run_mode={config.run_mode})")

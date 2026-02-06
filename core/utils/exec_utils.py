@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 
@@ -11,4 +10,3 @@ def render_main_with_solve(solve_source: str, *, template_name: str = "solve_tem
     tmpl = tmpl_path.read_text(encoding="utf-8")
     content = tmpl.replace("{{ solve_source }}", solve_source)
     return content
-

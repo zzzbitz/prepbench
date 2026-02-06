@@ -101,6 +101,6 @@ class CodeAgent:
             
         if not is_complete:
             # Log warning but return what we have (Orchestrator might retry or fail execution)
-            print(f"[CodeAgent] Warning: Generated code has syntax errors (incomplete?).")
+            print("[CodeAgent] Warning: Generated code has syntax errors (incomplete?).")
 
         return solve_code, raw_response, messages

@@ -121,13 +121,6 @@ def _read_json(path: Path) -> Optional[dict]:
         return None
     return data if isinstance(data, dict) else None
 
-def _valid_interact_cache(summary_path: Path) -> bool:
-    data = _read_json(summary_path)
-    if not data:
-        return False
-    qa_history = data.get("qa_history")
-    return isinstance(qa_history, list)
-
 def _valid_profile_cache(summary_path: Path) -> bool:
     data = _read_json(summary_path)
     if not data:
@@ -290,7 +283,6 @@ def run_single_case(
     try:
         import shutil
         if output_path.exists():
-            cand_dir = output_path / "solution" / "cand"
             profile_summary = output_path / "profile" / "summary.json"
             # E2E: if cand exists but flow needs to run, clean flow outputs only
             if config.run_mode == "e2e" and _should_run_flow_for_cand(output_path):
@@ -417,7 +409,6 @@ def main():
     logger.info(f"Configuration: RunMode={run_modes}, Jobs={jobs}")
     
     data_dir = Path(__file__).parent / "data"
-    repo_root = Path(__file__).parent
 
     # Load dirty case info if any dirty mode is selected
     # cleanspec removed; profile runs on all cases
