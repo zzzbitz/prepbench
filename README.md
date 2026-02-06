@@ -16,8 +16,6 @@ cd prepbench
 
 ```bash
 pip install -r requirements.txt
-# or
-pip install -e .
 ```
 
 ## Configuration

@@ -8,6 +8,63 @@ import tempfile
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 
+_SAFE_ENV_KEYS = {
+    "HOME",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "PATH",
+    "SYSTEMROOT",
+    "TEMP",
+    "TMP",
+    "TMPDIR",
+    "TZ",
+}
+
+_SENSITIVE_ENV_PREFIXES = (
+    "OPENROUTER_",
+    "OPENAI_",
+    "ANTHROPIC_",
+    "AZURE_",
+    "AWS_",
+    "GOOGLE_",
+    "GEMINI_",
+    "VOLCENGINE_",
+    "ARK_",
+    "DEEPSEEK_",
+    "DASHSCOPE_",
+    "COHERE_",
+    "MISTRAL_",
+    "HUGGINGFACE_",
+    "HF_",
+)
+
+_SENSITIVE_ENV_KEYWORDS = (
+    "API_KEY",
+    "ACCESS_TOKEN",
+    "SECRET",
+    "PASSWORD",
+    "PRIVATE_KEY",
+)
+
+
+def _build_isolated_env() -> Dict[str, str]:
+    # Start from a small allowlist to avoid leaking host secrets.
+    env = {k: v for k, v in os.environ.items() if k in _SAFE_ENV_KEYS}
+
+    # Extra defense: strip keys that still look sensitive.
+    for key in list(env.keys()):
+        upper = key.upper()
+        if upper.startswith(_SENSITIVE_ENV_PREFIXES) or any(token in upper for token in _SENSITIVE_ENV_KEYWORDS):
+            env.pop(key, None)
+
+    # Disable inherited Python import path and outbound proxy routing.
+    env["PYTHONPATH"] = ""
+    env["NO_PROXY"] = "*"
+    env["HTTPS_PROXY"] = ""
+    env["HTTP_PROXY"] = ""
+    return env
+
 
 class CodeExecutor:
     """Execute generated code in a constrained sandbox.
@@ -92,12 +149,7 @@ class CodeExecutor:
         code_path = tmp_path / "main.py"
         code_path.write_text(code, encoding="utf-8")
 
-        env = os.environ.copy()
-        # Strip network related env and PYTHONPATH for isolation
-        env["PYTHONPATH"] = ""
-        env["NO_PROXY"] = "*"
-        env["HTTPS_PROXY"] = ""
-        env["HTTP_PROXY"] = ""
+        env = _build_isolated_env()
 
         # Use absolute script path with cwd set to tmp_path for robustness
         cmd = [sys.executable, str(code_path)]
@@ -124,5 +176,4 @@ class CodeExecutor:
                     shutil.rmtree(tmp_path, ignore_errors=True)
                 except Exception:
                     pass
-
 
