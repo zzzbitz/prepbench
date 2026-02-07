@@ -20,22 +20,30 @@ pip install -r requirements.txt
 
 ## Configuration
 
-- `config/settings.yaml` holds shared defaults (tracked).
-- `config/settings.local.yaml` (optional, gitignored) can override non-secret settings.
+- `config/experiment.yaml` holds experiment/runtime defaults (tracked).
+- `config/llm.yaml` holds provider/model routing defaults (tracked).
+- Optional local overrides (gitignored):
+  - `config/experiment.local.yaml`
+  - `config/llm.local.yaml`
+  - `config/settings.local.yaml` (global override)
 - For the built-in OpenRouter provider, API keys must be set in `.env` (do not put keys in YAML).
 
 Important notes:
 - YAML values are **not** environment-variable expanded. Do not use `${OPENROUTER_API_KEY}` inside YAML.
-- Set `experiment.run_mode` and `llm.providers.<provider>.model` in settings if you want defaults.
+- Set `experiment.run_mode` in `config/experiment.yaml` and model/provider in `config/llm.yaml` if you want defaults.
 
 ### Minimal OpenRouter example
 
-`config/settings.yaml` (base defaults):
+`config/experiment.yaml`:
 
 ```yaml
 experiment:
   run_mode: "orig"
+```
 
+`config/llm.yaml`:
+
+```yaml
 llm:
   active_provider: "openrouter"
   providers:
@@ -65,6 +73,17 @@ EOF
 
 ```bash
 python run.py --case 1 --run_mode orig --model openai/gpt-5.2
+```
+
+Or use shortcut scripts:
+
+```bash
+./scripts/run_orig.sh --case 1 --model openai/gpt-5.2
+./scripts/run_disamb.sh --case 1 --model openai/gpt-5.2
+./scripts/run_interact.sh --case 1 --model openai/gpt-5.2
+./scripts/run_disamb_only.sh --case 1 --model openai/gpt-5.2
+./scripts/run_flow.sh --case 1 --model openai/gpt-5.2
+./scripts/run_e2e.sh --case 1 --model openai/gpt-5.2
 ```
 
 3) Check outputs:
@@ -103,7 +122,8 @@ python run.py --run_mode orig --model openai/gpt-5.2
 
 ### Use defaults from settings
 
-If you set `experiment.run_mode` and `llm.providers.<provider>.model` in `config/settings.yaml`, you can omit
+If you set `experiment.run_mode` in `config/experiment.yaml` and `llm.providers.<provider>.model`
+in `config/llm.yaml`, you can omit
 `--run_mode` and `--model`:
 
 ```bash

@@ -33,7 +33,7 @@ def create_llm_client_from_profile(model_name: Optional[str] = None, agent: Opti
         raise RuntimeError(
             "Model name is not configured. "
             "Set it in .env (`LLM_MODEL` / `LLM_USER_SIMULATOR_MODEL`) "
-            "or `config/settings.yaml` under the active provider (`llm.providers.*.model` / `user_simulator.model`)."
+            "or `config/llm.yaml` under the active provider (`llm.providers.*.model` / `user_simulator.model`)."
         )
 
     factory_path = prof.get("provider_factory") or prof.get("factory")

@@ -4,7 +4,7 @@ Utilities for creating LLM clients from configuration, routing providers, and tr
 
 ## Scope
 
-- Build an LLM client based on `config/settings.yaml` + `.env`
+- Build an LLM client based on `config/llm.yaml` (plus `config/experiment.yaml` for run defaults) + `.env`
 - Support multiple providers via a registry and dynamic `provider_factory`
 - Provide a usage tracker that downstream clients can report into
 - Offer a concrete OpenRouter client with retry logic

@@ -53,6 +53,8 @@ htmlcov/
 
 data_synthesis/output/
 config/settings.local.yaml
+config/experiment.local.yaml
+config/llm.local.yaml
 tmp/
 
 @output/

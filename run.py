@@ -378,7 +378,7 @@ def main():
         print(f"Error: Unknown --run_mode values: {invalid_run_modes}. Allowed: {sorted(allowed_modes)}")
         sys.exit(1)
     if not run_modes:
-        print("Error: run_mode is empty. Provide --run_mode or set experiment.run_mode in config/settings.yaml.")
+        print("Error: run_mode is empty. Provide --run_mode or set experiment.run_mode in config/experiment.yaml.")
         sys.exit(1)
 
     if not code_models:

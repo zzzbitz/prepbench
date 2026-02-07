@@ -1,0 +1,15 @@
+llm:
+  active_provider: "openrouter"
+  default_params:
+    temperature: 0.7
+    max_tokens: 30000
+  providers:
+    openrouter:
+      type: "openrouter"
+      model: "openrouter/pony-alpha"
+      # API keys are read from .env only.
+
+user_simulator:
+  model: "openrouter/pony-alpha"
+  default_params:
+    temperature: 0
