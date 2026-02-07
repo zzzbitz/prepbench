@@ -57,6 +57,13 @@ class Input(Operator):
                     break
                 except Exception as exc:
                     last_exc = exc
+                    ctx.logger.warning(
+                        "input read attempt failed node=%s mode=line encoding=%s path=%s error=%s",
+                        node_id,
+                        enc,
+                        resolved,
+                        exc,
+                    )
                     lines = []
             else:
                 raise ValueError(f"input line read failed for encodings={encodings}: {last_exc}")
@@ -93,4 +100,11 @@ class Input(Operator):
                 return ctx.io.read_df(resolved, "csv", options)
             except Exception as exc:
                 last_exc = exc
+                ctx.logger.warning(
+                    "input read attempt failed node=%s mode=csv encoding=%s path=%s error=%s",
+                    node_id,
+                    enc,
+                    resolved,
+                    exc,
+                )
         raise ValueError(f"input csv read failed for encodings={encodings}: {last_exc}")

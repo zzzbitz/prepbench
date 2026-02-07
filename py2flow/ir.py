@@ -188,11 +188,6 @@ def raise_validation(
     raise FlowValidationError(message, node_id=node_id, step_kind=kind,
                               error_code=error_code, field=field, help=help)
 
-
-def _reject_forbidden_expr_helpers(node: Node, expr: str, field: str) -> None:
-    return
-
-
 def _parse_inputs(node_id: str, kind: StepKind, inputs: Mapping[str, Any]) -> List[str]:
     def unknown_keys(allowed: Set[str]) -> List[str]:
         return [k for k in inputs.keys() if k not in allowed]
@@ -601,8 +596,6 @@ def _validate_project(node: Node) -> None:
                     step_kind=node.kind,
                     error_code="node_validation",
                 )
-            _reject_forbidden_expr_helpers(
-                node, item["expr"], "params.compute")
     if "cast" in node.params:
         cast = node.params["cast"]
         if not isinstance(cast, list):
@@ -733,8 +726,6 @@ def _validate_project(node: Node) -> None:
                             step_kind=node.kind,
                             error_code="node_validation",
                         )
-                    _reject_forbidden_expr_helpers(
-                        node, when_expr, "params.map")
     if "expand" in node.params:
         expand = node.params.get("expand")
         if not isinstance(expand, Mapping):
@@ -804,8 +795,6 @@ def _validate_project(node: Node) -> None:
                     step_kind=node.kind,
                     error_code="node_validation",
                 )
-            _reject_forbidden_expr_helpers(
-                node, to_value_expr, "params.expand.to_value_expr")
         if "keep_from_col" in expand:
             keep_from_col = expand.get("keep_from_col")
             if not isinstance(keep_from_col, bool):
@@ -818,7 +807,6 @@ def _validate_project(node: Node) -> None:
 def _validate_filter(node: Node) -> None:
     _reject_unknown_params(node, {"predicate", "null_as_false"})
     predicate = _require_str(node, "predicate")
-    _reject_forbidden_expr_helpers(node, predicate, "params.predicate")
     _optional_bool(node, "null_as_false", True)
 
 
@@ -1053,11 +1041,8 @@ def _validate_aggregate(node: Node) -> None:
                 step_kind=node.kind,
                 error_code="node_validation",
             )
-        if expr is not None:
-            _reject_forbidden_expr_helpers(node, expr, "params.aggs")
     if "having" in node.params and node.params["having"] is not None:
-        having = _require_str(node, "having")
-        _reject_forbidden_expr_helpers(node, having, "params.having")
+        _require_str(node, "having")
     _optional_bool(node, "null_group", True)
 
 
@@ -1116,8 +1101,6 @@ def _validate_dedup(node: Node) -> None:
                     step_kind=node.kind,
                     error_code="node_validation",
                 )
-            _reject_forbidden_expr_helpers(
-                node, item["expr"], "params.order_by")
             unknown = [k for k in item.keys() if k not in {
                 "expr", "asc", "nulls"}]
             if unknown:
@@ -1165,7 +1148,6 @@ def _validate_sort(node: Node) -> None:
                 step_kind=node.kind,
                 error_code="node_validation",
             )
-        _reject_forbidden_expr_helpers(node, expr, "params.order_by")
         asc = item.get("asc", True)
         if not isinstance(asc, bool):
             raise FlowValidationError(

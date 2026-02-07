@@ -5,7 +5,7 @@ system: |
 
   Output ONLY a valid JSON object (the flow.json). No markdown, no explanation, no extra text.
 
-guidelines: |
+core_guidelines: |
   ## Goal and Constraints
   - Use only `solution.py` and this operator contract.
   - The DAG must validate and execute under py2flow.
@@ -41,7 +41,11 @@ guidelines: |
   - Columns with safe identifiers can be referenced directly; otherwise use `df['Col']` or backticks: `` `Col` ``.
   - Predicate-style exprs must return bool or a boolean Series.
 
-  ## Operator Specs (params are strict; unknown keys fail validation)
+  ## JSON Output Requirement
+  Output ONLY the JSON object (flow.json). No markdown, no explanation.
+
+operator_definitions: |
+  ## Operator Definitions (strict params; unknown keys fail validation)
 
   ### input
   Params: path, mode, delimiter, encoding, na_values, keep_default_na, parse_dates, dtype, skiprows, header, on_bad_lines, quotechar, escapechar, data, source_type.
@@ -116,9 +120,6 @@ guidelines: |
   - inline_code must define: transform(df, pd, np) -> DataFrame.
   - Allowed import roots: calendar, collections, datetime, decimal, functools, itertools, json, locale, math, numpy, pandas, re, time, _strptime, statistics, string, typing.
   - Keep inline_code short; prefer standard operators to avoid exceeding limits.
-
-  ## JSON Output Requirement
-  Output ONLY the JSON object (flow.json). No markdown, no explanation.
 
 operator_cookbook: |
   ## Common Patterns (valid JSON fragments)

@@ -43,11 +43,15 @@ class FlowAgent:
         self, ctx: Dict[str, Any], feedback: Optional[Dict[str, Any]] = None
     ) -> str:
         """Builds the prompt using the Jinja2 template."""
-        cfg = load_prompt_yaml("flow_agent", required_keys=("system", "guidelines"))
+        cfg = load_prompt_yaml(
+            "flow_agent",
+            required_keys=("system", "core_guidelines", "operator_definitions"),
+        )
 
         return self.template.render(
             system_prompt_text=cfg["system"],
-            guidelines_text=cfg["guidelines"],
+            core_guidelines_text=cfg["core_guidelines"],
+            operator_definitions_text=cfg["operator_definitions"],
             operator_reference=cfg.get("operator_cookbook", ""),
             exec_error_instructions=cfg.get("exec_error_instructions", ""),
             context=ctx,
