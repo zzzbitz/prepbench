@@ -290,7 +290,7 @@ def run_single_case(
                 flow_dir = output_path / "flow"
                 if flow_dir.exists():
                     shutil.rmtree(flow_dir)
-                for name in ("flow_final_status.json", "flow_execution.json", "flow_evaluation.json", "flow_protocol.json", "flow.json"):
+                for name in ("flow_final_status.json", "flow_execution.json", "flow_evaluation.json", "flow.json"):
                     path = output_path / "solution" / name
                     if path.exists():
                         path.unlink()

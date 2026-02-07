@@ -853,10 +853,6 @@ class Orchestrator:
             if flow_status_src.exists():
                 shutil.copy2(flow_status_src, final_solution_dir / "flow_final_status.json")
 
-            flow_protocol_src = flow_solution_dir / "protocol.json"
-            if flow_protocol_src.exists():
-                shutil.copy2(flow_protocol_src, final_solution_dir / "flow_protocol.json")
-
         # Initialize usage tracker (code + flow for e2e)
         from llm_connect.usage_tracker import UsageTracker, set_tracker
 

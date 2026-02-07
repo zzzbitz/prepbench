@@ -11,17 +11,6 @@ from config.experiment_config import ExperimentConfig
 from core.orchestration.common import copy_solution_artifacts, summarize_eval
 
 
-def _validate_script_constraints_optional(flow_dict: dict) -> tuple[bool, str, dict]:
-    """Validate script constraints when the optional validator module is available."""
-    try:
-        from py2flow.flow_constraints import validate_script_constraints  # type: ignore
-    except Exception:
-        # Older/lightweight py2flow builds may not include flow_constraints.
-        # In that case, rely on DAG parsing + executor validation.
-        return True, "", {}
-    return validate_script_constraints(flow_dict)
-
-
 def run_flow_impl(
     *,
     tdir: Path,
@@ -32,6 +21,7 @@ def run_flow_impl(
     """Shared flow execution logic for flow mode and e2e."""
     from py2flow.errors import FlowExecutionError, FlowValidationError
     from py2flow.executor import DAGExecutor, DebugConfig
+    from py2flow.flow_constraints import validate_script_constraints
     from py2flow.ir import DAG
 
     input_dir = tdir / "inputs"
@@ -163,7 +153,7 @@ def run_flow_impl(
         try:
             dag = DAG.from_dict(flow_dict)
 
-            is_valid, constraint_err, err_details = _validate_script_constraints_optional(flow_dict)
+            is_valid, constraint_err, err_details = validate_script_constraints(flow_dict)
             if not is_valid:
                 stopped_reason = "execerror"
                 exec_info = {"ok": False, "rc": 1, "stderr": constraint_err, "stdout": "", "took_sec": 0}
@@ -333,24 +323,6 @@ def run_flow_impl(
     (final_solution_dst / "final_status.json").write_text(
         json.dumps(final_status, ensure_ascii=False, indent=2), encoding="utf-8"
     )
-    (final_solution_dst / "protocol.json").write_text(
-        json.dumps(
-            {
-                "benchmark": "code_to_flow",
-                "agent_input": ["solution.py"],
-                "agent_input_excludes": ["query.md", "query_full.md", "inputs_preview", "gt/allowed_outputs"],
-                "feedback_enabled_for": ["json_parse", "validation", "execution", "no_outputs"],
-                "evaluation_feedback_to_agent": False,
-                "stop_on_execution_success": True,
-                "case": tdir.name,
-                "model_under_test": cfg.model_name,
-            },
-            ensure_ascii=False,
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
-
     return {
         "passed": passed,
         "rounds": len(hist),
