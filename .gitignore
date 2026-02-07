@@ -60,3 +60,8 @@ tmp/
 
 @output.zip
 draw/output/
+
+# Benchmark reference solutions (gtcode) are kept local only.
+data/case_*/solution.py
+simulator/assets/solutions/*
+!simulator/assets/solutions/.gitkeep

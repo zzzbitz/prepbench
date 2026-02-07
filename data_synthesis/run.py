@@ -9,6 +9,7 @@ import logging
 from typing import Optional
 from functools import partial
 
+from core.case_assets import require_reference_solution_path, resolve_reference_solution_path
 from .synthesizer import Synthesizer
 from . import config as ds_config
 
@@ -104,10 +105,10 @@ def preflight_validate(mode: str, cases: list[str], output_dir: Path) -> None:
     for case_name in cases:
         case_dir = DATA_DIR / case_name
         query_path = case_dir / "query.md"
-        code_path = case_dir / "solution.py"
+        code_path = resolve_reference_solution_path(case_dir)
         flow_path = case_dir / "flow.json"
-        if not query_path.exists() or not code_path.exists() or not flow_path.exists():
-            print(f"[ERROR] {case_name}: missing query.md or solution.py or flow.json")
+        if not query_path.exists() or code_path is None or not flow_path.exists():
+            print(f"[ERROR] {case_name}: missing query.md or reference solution or flow.json")
             sys.exit(1)
 
 
@@ -129,7 +130,7 @@ def _looks_like_no_ambiguity(text: str) -> bool:
 def process_full(case_name: str, model_full: str, output_dir: Path) -> str:
     case_dir = DATA_DIR / case_name
     query_path = case_dir / "query.md"
-    code_path = case_dir / "solution.py"
+    code_path = require_reference_solution_path(case_dir)
     flow_path = case_dir / "flow.json"
 
     logger.info(f"[{case_name}][{model_full}] Generating query_full...")
@@ -159,7 +160,7 @@ def process_full(case_name: str, model_full: str, output_dir: Path) -> str:
 def process_amb(case_name: str, model_full: str, output_dir: Path, force: bool) -> str:
     case_dir = DATA_DIR / case_name
     query_path = case_dir / "query.md"
-    code_path = case_dir / "solution.py"
+    code_path = require_reference_solution_path(case_dir)
     flow_path = case_dir / "flow.json"
 
     query_full_path = case_dir / "query_full.md"

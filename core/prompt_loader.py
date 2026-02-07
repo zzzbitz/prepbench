@@ -1,7 +1,7 @@
 from __future__ import annotations
 import yaml
 from pathlib import Path
-from typing import Dict, Any, Sequence
+from typing import Dict, Any, Optional, Sequence
 
 
 class PromptConfigError(ValueError):
@@ -20,9 +20,15 @@ def _validate_required_keys(name: str, data: Dict[str, Any], required_keys: Sequ
         )
 
 
-def load_prompt_yaml(name: str, *, required_keys: Sequence[str] | None = None) -> Dict[str, Any]:
-    """Load YAML under agents/prompts/{name}.yaml and optionally validate required keys."""
-    path = Path(__file__).resolve().parents[1] / "agents" / "prompts" / f"{name}.yaml"
+def load_prompt_yaml(
+    name: str,
+    *,
+    required_keys: Sequence[str] | None = None,
+    prompt_dir: Optional[Path] = None,
+) -> Dict[str, Any]:
+    """Load prompt YAML and optionally validate required keys."""
+    base_dir = prompt_dir or (Path(__file__).resolve().parents[1] / "agents" / "prompts")
+    path = base_dir / f"{name}.yaml"
     if not path.exists():
         raise PromptConfigError(f"Prompt config not found: {path}")
 
@@ -40,5 +46,4 @@ def load_prompt_yaml(name: str, *, required_keys: Sequence[str] | None = None) -
     if required_keys:
         _validate_required_keys(name, data, required_keys)
     return data
-
 

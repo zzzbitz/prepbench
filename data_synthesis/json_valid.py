@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from core.case_assets import resolve_reference_solution_path
+
 # Regex patterns for detecting non-ASCII / uncommon language characters
 # CJK Unified Ideographs (Chinese, Japanese Kanji, Korean Hanja) - Basic Multilingual Plane only
 # Extended planes (U+20000+) require \U escapes and are rare in practice
@@ -100,7 +102,7 @@ def _check_entry_uncommon_chars(entry: dict[str, Any], idx: int) -> list[str]:
     if isinstance(ref_val, str) and ref_val:
         ref_issues = _check_uncommon_chars(ref_val, context="")
         for issue in ref_issues:
-            issues.append(f"entry[{idx}].ref (from solution.py) {issue}")
+            issues.append(f"entry[{idx}].ref (from reference solution) {issue}")
     
     return issues
 
@@ -124,7 +126,7 @@ def _check_json_readability(path: Path, text: str, has_ambiguities: bool) -> lis
 def _validate_ref_lines(ref: str, solution_text: str) -> list[str]:
     issues: list[str] = []
     if not solution_text:
-        return ["solution.py missing or unreadable; cannot validate ref"]
+        return ["reference solution missing or unreadable; cannot validate ref"]
     missing_lines: list[str] = []
     for line in ref.splitlines():
         if not line.strip():
@@ -133,7 +135,7 @@ def _validate_ref_lines(ref: str, solution_text: str) -> list[str]:
             missing_lines.append(line)
     if missing_lines:
         preview = "; ".join(missing_lines[:3])
-        issues.append(f"ref lines not found in solution.py (examples): {preview}")
+        issues.append(f"ref lines not found in reference solution (examples): {preview}")
     return issues
 
 
@@ -246,7 +248,8 @@ def validate_case(
     if nodes_err:
         issues.append(nodes_err)
 
-    solution_text = _load_solution_text(case_dir / "solution.py")
+    solution_path = resolve_reference_solution_path(case_dir)
+    solution_text = _load_solution_text(solution_path) if solution_path is not None else ""
     seen_ids: set[str] = set()
     for idx, entry in enumerate(ambiguities):
         if check_uncommon_chars and isinstance(entry, dict):
@@ -282,7 +285,7 @@ def main() -> int:
     parser.add_argument(
         "--skip-ref-check",
         action="store_true",
-        help="Skip checking whether ref lines appear in solution.py.",
+        help="Skip checking whether ref lines appear in reference solution.",
     )
     parser.add_argument(
         "--skip-char-check",

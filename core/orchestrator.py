@@ -9,7 +9,8 @@ from typing import Any, Dict, Optional
 
 from agents.code_agent import CodeAgent
 from agents.prep_agent import PrepAgent
-from agents.clarifier_agent import ClarifierAgent
+from simulator.user_simulator import UserSimulator
+from core.case_assets import read_reference_solution_text, require_reference_solution_path
 from core.utils.paths import get_output_path
 from .executor import CodeExecutor
 from config.experiment_config import ExperimentConfig
@@ -116,8 +117,7 @@ class Orchestrator:
         output_root = get_output_path(tdir, config)
         input_dir = tdir / "inputs"
 
-        solution_path = tdir / "solution.py"
-        solution_text = solution_path.read_text(encoding="utf-8") if solution_path.exists() else ""
+        solution_text = read_reference_solution_text(tdir)
 
         from core.data_head import DataHead
         data_head = DataHead()
@@ -186,7 +186,7 @@ class Orchestrator:
                 max_questions = min(max_questions, effective_cap)
 
         sut = PrepAgent(config.model_name)
-        clarifier = ClarifierAgent()
+        user_simulator = UserSimulator()
 
         from llm_connect.config import get_model_name
         try:
@@ -352,7 +352,7 @@ class Orchestrator:
                 saved_tracker = get_tracker()
                 set_tracker(None)
                 try:
-                    clar = clarifier.answer(
+                    clar = user_simulator.answer(
                         query_full_text=query_full_text,
                         amb_kb_json=amb_kb_json,
                         solution_text=solution_text,
@@ -438,7 +438,7 @@ class Orchestrator:
                     saved_tracker_retry = get_tracker()
                     set_tracker(None)
                     try:
-                        clar_retry = clarifier.answer(
+                        clar_retry = user_simulator.answer(
                             query_full_text=query_full_text,
                             amb_kb_json=amb_kb_json,
                             solution_text=solution_text,
@@ -1356,9 +1356,7 @@ class Orchestrator:
         """
         from core.utils.paths import get_output_path
 
-        solution_path = tdir / "solution.py"
-        if not solution_path.exists():
-            raise FileNotFoundError(f"[flow mode] solution.py not found: {solution_path}")
+        solution_path = require_reference_solution_path(tdir)
         solution_text = solution_path.read_text(encoding="utf-8")
         output_root = get_output_path(tdir, config)
 

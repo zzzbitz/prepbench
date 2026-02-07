@@ -32,4 +32,5 @@ packages = [
   "llm_connect",
   "py2flow",
   "py2flow.operators",
+  "simulator",
 ]
