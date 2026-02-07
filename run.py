@@ -14,7 +14,7 @@ from config.experiment_config import ExperimentConfig
 from core.utils.paths import get_output_path
 from core.utils.logging_config import configure_logging, get_logger
 from core.orchestration.mode_spec import allowed_run_modes
-from llm_connect.config import validate_clarifier_settings
+from llm_connect.config import validate_user_simulator_settings
 
 T = TypeVar("T")
 
@@ -390,18 +390,18 @@ def main():
 
     # Dirty-case-only modes removed; profile runs on all cases.
 
-    # Preflight Clarifier settings only when all selected modes require it.
-    needs_clarifier = any(m in ("interact", "e2e") for m in run_modes)
-    only_clarifier_modes = all(m in ("interact", "e2e") for m in run_modes)
-    if needs_clarifier and only_clarifier_modes:
+    # Preflight user simulator settings only when all selected modes require it.
+    needs_user_simulator = any(m in ("interact", "e2e") for m in run_modes)
+    only_user_simulator_modes = all(m in ("interact", "e2e") for m in run_modes)
+    if needs_user_simulator and only_user_simulator_modes:
         try:
-            validate_clarifier_settings()
+            validate_user_simulator_settings()
         except Exception as e:
-            print(f"Error: Clarifier config invalid: {e}")
+            print(f"Error: user_simulator config invalid: {e}")
             sys.exit(1)
-    elif needs_clarifier:
+    elif needs_user_simulator:
         logger.warning(
-            "Clarifier config preflight skipped because non-clarifier modes are included; "
+            "user_simulator config preflight skipped because non-interact/e2e modes are included; "
             "interact/e2e tasks may fail if misconfigured."
         )
 
@@ -542,7 +542,7 @@ def main():
                 f"max_questions_per_ask={base_config.max_questions_per_ask}"
             )
         if any(m in ("orig", "disamb", "interact", "e2e") for m in run_modes):
-            print(f"Profile: enabled={base_config.profile.enabled} max_rows_per_file={base_config.profile.max_rows_per_file} max_rounds={base_config.profile.max_rounds}")
+            print(f"Profile: max_rounds={base_config.profile.max_rounds}")
 
         try:
             resp = input("Proceed? [y/N]: ").strip().lower()

@@ -356,7 +356,7 @@ class UserSimulator:
         prompt_content = self._build_prompt(ctx)
         messages = [{"role": "user", "content": prompt_content}]
 
-        params = get_llm_params("ClarifierAgent", "answer") or {}
+        params = get_llm_params("UserSimulator", "answer") or {}
         raw = None
 
         if structured_outputs_enabled():
@@ -365,8 +365,8 @@ class UserSimulator:
             try:
                 from llm_connect.config import get_model_name
 
-                model_name = get_model_name(self.model_name, agent="clarifier")
-                api_key, base_url = resolve_outlines_credentials(agent="clarifier")
+                model_name = get_model_name(self.model_name, agent="user_simulator")
+                api_key, base_url = resolve_outlines_credentials(agent="user_simulator")
                 parsed = structured_json(
                     model_name=model_name,
                     prompt=prompt_content,
@@ -386,7 +386,7 @@ class UserSimulator:
                 )
                 raw = None
 
-        llm = create_llm_client_from_profile(self.model_name, agent="clarifier")
+        llm = create_llm_client_from_profile(self.model_name, agent="user_simulator")
         if llm is None:
             raise RuntimeError("LLM configuration not found.")
 

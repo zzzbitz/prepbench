@@ -22,15 +22,15 @@ From `llm_connect.config` (used by other modules):
 - `get_active_profile(agent: str | None = None) -> (name, profile) | None`
 - `get_model_name(override: str | None = None, agent: str | None = None) -> str`
 - `get_llm_params(agent_name: str, step_name: str) -> dict`
-- `validate_clarifier_settings() -> None`
+- `validate_user_simulator_settings() -> None`
 
 ## Provider Resolution
 
 1) Resolve active provider from config or `.env`:
-   - `LLM_ACTIVE_PROVIDER` or `LLM_CLARIFIER_ACTIVE_PROVIDER`
+   - `LLM_ACTIVE_PROVIDER` or `LLM_USER_SIMULATOR_ACTIVE_PROVIDER`
 2) Resolve model:
    - `model_name` override
-   - `.env`: `LLM_MODEL` / `LLM_CLARIFIER_MODEL`
+   - `.env`: `LLM_MODEL` / `LLM_USER_SIMULATOR_MODEL`
    - provider `model` field
 3) Resolve provider implementation:
    - `provider_factory` (format `module:function`) if present

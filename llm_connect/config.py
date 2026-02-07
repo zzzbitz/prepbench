@@ -6,6 +6,17 @@ from functools import lru_cache
 
 from config.config_loader import get_env_value, load_env_file, load_settings
 
+
+USER_SIMULATOR_AGENT = "user_simulator"
+
+
+def _is_user_simulator_agent(agent: Optional[str]) -> bool:
+    if not isinstance(agent, str):
+        return False
+    normalized = agent.strip().lower().replace("-", "_")
+    return normalized in {"user_simulator", "usersimulator"}
+
+
 @lru_cache(maxsize=1)
 def load_settings_config() -> Dict[str, Any]:
     """Loads the unified settings configuration file."""
@@ -28,7 +39,7 @@ def _get_effective_section_for_agent(agent: Optional[str] = None) -> Dict[str, A
     """
     Returns the effective config section for an agent.
 
-    Goal: avoid repeating provider configuration across llm/clarifier while keeping
+    Goal: avoid repeating provider configuration across llm/user_simulator while keeping
     agent-specific overrides explicit.
 
     Effective fields:
@@ -41,16 +52,8 @@ def _get_effective_section_for_agent(agent: Optional[str] = None) -> Dict[str, A
     if agent is None:
         return llm_root
 
-    if agent == "clarifier":
-        # Prefer dedicated top-level section; accept historical typo as alias.
-        top = _get_top_level_agent_section("clarifier") or _get_top_level_agent_section("claifier")
-        # Legacy nested support: llm.clarifier / llm.claifier
-        legacy = (llm_root or {}).get("clarifier")
-        if not (isinstance(legacy, dict) and legacy):
-            legacy = (llm_root or {}).get("claifier")
-        if not (isinstance(legacy, dict) and legacy):
-            legacy = {}
-        agent_sect = top or legacy
+    if _is_user_simulator_agent(agent):
+        agent_sect = _get_top_level_agent_section(USER_SIMULATOR_AGENT)
     else:
         agent_sect = {}
 
@@ -84,26 +87,18 @@ def _get_effective_section_for_agent(agent: Optional[str] = None) -> Dict[str, A
 def _get_section_for_agent(agent: Optional[str] = None) -> Dict[str, Any]:
     data = load_settings_config()
     llm_root = data.get("llm", {})
-    if agent == "clarifier":
-        # Top-level dedicated section: prefer `clarifier`, accept `claifier` as alias.
-        top = data.get("clarifier")
-        if not (isinstance(top, dict) and top):
-            top = data.get("claifier")
-        if isinstance(top, dict) and top:
+    if _is_user_simulator_agent(agent):
+        top = data.get(USER_SIMULATOR_AGENT)
+        if isinstance(top, dict):
             return top
-        nested = (llm_root or {}).get("clarifier")
-        if not (isinstance(nested, dict) and nested):
-            nested = (llm_root or {}).get("claifier")
-        if isinstance(nested, dict) and nested:
-            return nested
         return {}
     return llm_root
 
 
 def get_active_profile(agent: Optional[str] = None) -> Optional[Tuple[str, Dict[str, Any]]]:
     sect = _get_effective_section_for_agent(agent)
-    if agent == "clarifier":
-        env_key = "LLM_CLARIFIER_ACTIVE_PROVIDER"
+    if _is_user_simulator_agent(agent):
+        env_key = "LLM_USER_SIMULATOR_ACTIVE_PROVIDER"
     else:
         env_key = "LLM_ACTIVE_PROVIDER"
     active = get_env_value(env_key, "").strip() or (sect or {}).get("active_provider")
@@ -118,7 +113,7 @@ def get_model_names(agent: Optional[str] = None) -> list[str]:
     Returns configured model name(s) for an agent.
 
     - agent is None (code/prep): allow list or string from provider config.
-    - agent == "clarifier": must resolve to a single model (top-level `clarifier.model` or provider model string).
+    - agent == "user_simulator": must resolve to a single model (top-level `user_simulator.model` or provider model string).
     """
     sect = _get_effective_section_for_agent(agent)
 
@@ -133,13 +128,13 @@ def get_model_names(agent: Optional[str] = None) -> list[str]:
             return out
         return []
 
-    # Agent-level override: allow `clarifier.model` as string only.
-    if agent == "clarifier":
+    # Agent-level override: allow `user_simulator.model` as string only.
+    if _is_user_simulator_agent(agent):
         top = (sect or {}).get("model")
         if isinstance(top, str) and top.strip():
             return [top.strip()]
         if isinstance(top, list):
-            raise ValueError("Clarifier model must be a single string; lists are not allowed.")
+            raise ValueError("User simulator model must be a single string; lists are not allowed.")
 
     prof = get_active_profile(agent)
     if not prof:
@@ -148,10 +143,10 @@ def get_model_names(agent: Optional[str] = None) -> list[str]:
     model_field = profile.get("model", "")
 
     models = _from_value(model_field)
-    if agent == "clarifier":
+    if _is_user_simulator_agent(agent):
         if len(models) != 1:
             raise ValueError(
-                f"Clarifier model must be a single string (active_provider={active_provider})."
+                f"User simulator model must be a single string (active_provider={active_provider})."
             )
     return models
 
@@ -160,8 +155,8 @@ def get_model_name(override: Optional[str] = None, agent: Optional[str] = None) 
     if override and str(override).strip():
         return str(override).strip()
 
-    if agent == "clarifier":
-        env_var = "LLM_CLARIFIER_MODEL"
+    if _is_user_simulator_agent(agent):
+        env_var = "LLM_USER_SIMULATOR_MODEL"
     else:
         env_var = "LLM_MODEL"
     env_model = get_env_value(env_var, "")
@@ -172,58 +167,39 @@ def get_model_name(override: Optional[str] = None, agent: Optional[str] = None) 
     return models[0] if models else ""
 
 
-def _has_top_level_clarifier() -> bool:
-    data = load_settings_config()
-    top = data.get("clarifier")
-    if isinstance(top, dict) and top:
-        return True
-    top = data.get("claifier")
-    return isinstance(top, dict) and bool(top)
-
-
-def validate_clarifier_settings() -> None:
-    """Fail-fast validation for Clarifier settings used by interact mode.
-
-    Accepts either:
-    - top-level `clarifier` (preferred; `claifier` is accepted as an alias), or
-    - legacy `llm.clarifier` (fallback).
-
-    Validates the effective provider selection and enforces a single-string model (no lists).
-    """
+def validate_user_simulator_settings() -> None:
+    """Fail-fast validation for user simulator settings used by interact mode."""
     data = load_settings_config()
 
-    # Clarifier must be explicitly configured (top-level preferred).
-    has_top = isinstance(data.get("clarifier"), dict) and bool(data.get("clarifier"))
-    has_top_alias = isinstance(data.get("claifier"), dict) and bool(data.get("claifier"))
-    has_legacy = isinstance((_get_llm_root() or {}).get("clarifier"), dict) and bool((_get_llm_root() or {}).get("clarifier"))
-    has_legacy_alias = isinstance((_get_llm_root() or {}).get("claifier"), dict) and bool((_get_llm_root() or {}).get("claifier"))
-    if not (has_top or has_top_alias or has_legacy or has_legacy_alias):
+    # user_simulator must be explicitly configured at top level.
+    has_top = isinstance(data.get(USER_SIMULATOR_AGENT), dict) and bool(data.get(USER_SIMULATOR_AGENT))
+    if not has_top:
         raise ValueError(
-            "Clarifier section is missing (configure top-level `clarifier` (preferred) or legacy `llm.clarifier`; `claifier` is accepted as an alias)."
+            "user_simulator section is missing (configure top-level `user_simulator`)."
         )
 
-    clar_section = _get_effective_section_for_agent("clarifier")
-    active = get_env_value("LLM_CLARIFIER_ACTIVE_PROVIDER", "").strip() or (clar_section or {}).get("active_provider")
-    providers = (clar_section or {}).get("providers", {}) or {}
+    sim_section = _get_effective_section_for_agent(USER_SIMULATOR_AGENT)
+    active = get_env_value("LLM_USER_SIMULATOR_ACTIVE_PROVIDER", "").strip() or (sim_section or {}).get("active_provider")
+    providers = (sim_section or {}).get("providers", {}) or {}
     if not active or active not in providers:
-        raise ValueError("Clarifier active_provider is not configured or not present in providers.")
+        raise ValueError("user_simulator active_provider is not configured or not present in providers.")
 
     # Model can be overridden by .env; if not, validate config model type/value.
-    env_model = get_env_value("LLM_CLARIFIER_MODEL", "")
+    env_model = get_env_value("LLM_USER_SIMULATOR_MODEL", "")
     if env_model and env_model.strip():
         return
 
-    top_model = (clar_section or {}).get("model")
+    top_model = (sim_section or {}).get("model")
     if isinstance(top_model, str) and top_model.strip():
         return
 
     model_field = (providers.get(active) or {}).get("model")
     if model_field is None:
-        raise ValueError(f"Clarifier model is not configured for provider '{active}'.")
+        raise ValueError(f"user_simulator model is not configured for provider '{active}'.")
     if isinstance(model_field, list):
-        raise ValueError(f"Clarifier model for provider '{active}' must be a single string (lists are not allowed).")
+        raise ValueError(f"user_simulator model for provider '{active}' must be a single string (lists are not allowed).")
     if not isinstance(model_field, str) or not model_field.strip():
-        raise ValueError(f"Clarifier model for provider '{active}' must be a non-empty string.")
+        raise ValueError(f"user_simulator model for provider '{active}' must be a non-empty string.")
 
 
 def _camel_to_snake(name: str) -> str:
@@ -292,7 +268,8 @@ def _extract_params_override(params_root: Any, agent_name: str, step_name: str) 
 
 
 def get_llm_params(agent_name: str, step_name: str) -> Dict[str, Any]:
-    is_clarifier = agent_name.lower().startswith("clarifier")
+    normalized_agent = (agent_name or "").strip().lower().replace("-", "_")
+    is_user_simulator = normalized_agent in {"user_simulator", "usersimulator"}
 
     llm_root = _get_section_for_agent(None)
     llm_default = (llm_root or {}).get("default_params") or {}
@@ -302,18 +279,18 @@ def get_llm_params(agent_name: str, step_name: str) -> Dict[str, Any]:
     if isinstance(llm_default, dict):
         merged.update(llm_default)
 
-    if is_clarifier:
-        clarifier_sect = _get_section_for_agent("clarifier")
-        clarifier_default = (clarifier_sect or {}).get("default_params") or {}
-        if isinstance(clarifier_default, dict) and clarifier_default:
-            merged.update(clarifier_default)
+    if is_user_simulator:
+        simulator_sect = _get_section_for_agent(USER_SIMULATOR_AGENT)
+        simulator_default = (simulator_sect or {}).get("default_params") or {}
+        if isinstance(simulator_default, dict) and simulator_default:
+            merged.update(simulator_default)
 
         llm_override = _extract_params_override(llm_params_root, agent_name, step_name)
         merged.update(llm_override)
 
-        clarifier_params_root = (clarifier_sect or {}).get("params") or {}
-        if isinstance(clarifier_params_root, dict):
-            merged.update(_extract_params_override(clarifier_params_root, agent_name, step_name))
+        simulator_params_root = (simulator_sect or {}).get("params") or {}
+        if isinstance(simulator_params_root, dict):
+            merged.update(_extract_params_override(simulator_params_root, agent_name, step_name))
         return merged
 
     merged.update(_extract_params_override(llm_params_root, agent_name, step_name))

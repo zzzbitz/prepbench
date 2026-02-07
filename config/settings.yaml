@@ -11,12 +11,6 @@ experiment:
   output_root_template: "@output/{model_info}/{run_mode}/{case_name}"
 
 profile:
-  enabled: true
-  max_rows_per_file: 2000
-  max_top_values: 5
-  max_unique_values: 50
-  max_columns: 80
-  max_column_highlights: 12
   max_rounds: 2             # Maximum code execution rounds for ProfileAgent
   max_summary_chars: 4000   # Maximum characters for profile summary
 
@@ -31,7 +25,7 @@ llm:
       model: "openrouter/pony-alpha"
       # API keys are read from .env only.
 
-clarifier:
+user_simulator:
   model: "openrouter/pony-alpha"
   default_params:
     temperature: 0

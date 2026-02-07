@@ -110,8 +110,8 @@ class Orchestrator:
                 f"[{config.run_mode} mode] Cannot start: {', '.join(errors)} (case: {tdir.name})"
             )
 
-        from llm_connect.config import validate_clarifier_settings
-        validate_clarifier_settings()
+        from llm_connect.config import validate_user_simulator_settings
+        validate_user_simulator_settings()
         # ================================================================
 
         output_root = get_output_path(tdir, config)
@@ -190,7 +190,7 @@ class Orchestrator:
 
         from llm_connect.config import get_model_name
         try:
-            clarifier_model = get_model_name(agent="clarifier") or None
+            clarifier_model = get_model_name(agent="user_simulator") or None
         except Exception:
             clarifier_model = None
 
@@ -1045,7 +1045,6 @@ class Orchestrator:
                 "code_history": code_result.get("history", []),
                 "flow_history": flow_result.get("history", []) if isinstance(flow_result, dict) else [],
                 "qa_history": qa_history or [],
-                "profile_enabled": config.profile.enabled,
                 "profile_error": profile_error,
                 "stopped_reason": final_status.get("reason", "unknown"),
             }

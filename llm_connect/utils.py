@@ -9,13 +9,13 @@ def create_llm_client_from_profile(model_name: Optional[str] = None, agent: Opti
     Create an LLM client based on the active provider configuration.
 
     Config routing:
-    - When `agent == "clarifier"`, settings are resolved from the dedicated top-level `clarifier` section
-      (fallback: `llm.clarifier`, then `llm`).
+    - When `agent == "user_simulator"`, settings are resolved from the dedicated
+      top-level `user_simulator` section.
     - Otherwise, settings are resolved from `llm`.
 
     Model resolution order:
     1) `model_name` override (if provided)
-    2) `.env` (`LLM_CLARIFIER_MODEL` or `LLM_MODEL`)
+    2) `.env` (`LLM_USER_SIMULATOR_MODEL` or `LLM_MODEL`)
     3) provider config `model`
 
     Provider resolution:
@@ -32,8 +32,8 @@ def create_llm_client_from_profile(model_name: Optional[str] = None, agent: Opti
     if not final_model:
         raise RuntimeError(
             "Model name is not configured. "
-            "Set it in .env (`LLM_MODEL` / `LLM_CLARIFIER_MODEL`) "
-            "or `config/settings.yaml` under the active provider (`llm.providers.*.model` / `clarifier.model`)."
+            "Set it in .env (`LLM_MODEL` / `LLM_USER_SIMULATOR_MODEL`) "
+            "or `config/settings.yaml` under the active provider (`llm.providers.*.model` / `user_simulator.model`)."
         )
 
     factory_path = prof.get("provider_factory") or prof.get("factory")

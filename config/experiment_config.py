@@ -7,12 +7,6 @@ from .config_loader import get_env_value, load_env_file, load_settings
 
 @dataclass(frozen=True)
 class ProfileConfig:
-    enabled: bool
-    max_rows_per_file: int
-    max_top_values: int
-    max_unique_values: int
-    max_columns: int
-    max_column_highlights: int
     max_rounds: int              # Maximum code execution rounds for ProfileAgent
     max_summary_chars: int       # Maximum characters for profile summary
 
@@ -107,22 +101,6 @@ class ExperimentConfig:
             max_questions_cap = cls._validate_positive("max_questions_cap", int(max_questions_cap))
 
         profile_cfg = ProfileConfig(
-            enabled=bool(profile_data.get("enabled", True)),
-            max_rows_per_file=cls._validate_positive(
-                "profile.max_rows_per_file", int(profile_data.get("max_rows_per_file", 2000))
-            ),
-            max_top_values=cls._validate_positive(
-                "profile.max_top_values", int(profile_data.get("max_top_values", 5))
-            ),
-            max_unique_values=cls._validate_positive(
-                "profile.max_unique_values", int(profile_data.get("max_unique_values", 50))
-            ),
-            max_columns=cls._validate_positive(
-                "profile.max_columns", int(profile_data.get("max_columns", 80))
-            ),
-            max_column_highlights=cls._validate_positive(
-                "profile.max_column_highlights", int(profile_data.get("max_column_highlights", 12))
-            ),
             max_rounds=cls._validate_positive(
                 "profile.max_rounds", int(profile_data.get("max_rounds", 2))
             ),
