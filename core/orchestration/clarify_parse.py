@@ -42,20 +42,20 @@ def _normalize_question_for_match(s: str) -> str:
     return re.sub(r"\s+", " ", (s or "").strip().lower())
 
 
-def validate_clarifier_alignment(
+def validate_user_simulator_alignment(
     *,
     expected_sub_questions: list[str],
-    clarifier_answers: list[dict],
+    user_simulator_answers: list[dict],
 ) -> tuple[bool, str]:
     if not expected_sub_questions:
         return True, ""
-    if len(clarifier_answers) != len(expected_sub_questions):
+    if len(user_simulator_answers) != len(expected_sub_questions):
         return (
             False,
-            f"answer_count_mismatch: expected={len(expected_sub_questions)} got={len(clarifier_answers)}",
+            f"answer_count_mismatch: expected={len(expected_sub_questions)} got={len(user_simulator_answers)}",
         )
     for i, exp in enumerate(expected_sub_questions):
-        ans = clarifier_answers[i] or {}
+        ans = user_simulator_answers[i] or {}
         sq = ans.get("sub_question", "")
         if not isinstance(sq, str) or not sq.strip():
             return False, f"missing_sub_question_at_index={i}"

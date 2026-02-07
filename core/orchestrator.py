@@ -15,7 +15,7 @@ from core.utils.paths import get_output_path
 from .executor import CodeExecutor
 from config.experiment_config import ExperimentConfig
 from core.orchestration.common import copy_solution_artifacts, resolve_query_path
-from core.orchestration.clarify_parse import parse_sub_questions, validate_clarifier_alignment
+from core.orchestration.clarify_parse import parse_sub_questions, validate_user_simulator_alignment
 from core.orchestration.flow_phase import run_flow_impl
 from core.orchestration.mode_spec import allowed_run_modes
 from core.orchestration.profile_phase import run_profile_phase
@@ -190,9 +190,9 @@ class Orchestrator:
 
         from llm_connect.config import get_model_name
         try:
-            clarifier_model = get_model_name(agent="user_simulator") or None
+            user_simulator_model = get_model_name(agent="user_simulator") or None
         except Exception:
-            clarifier_model = None
+            user_simulator_model = None
 
         # ========== Phase 1: Clarify ==========
         clarify_session_state = {
@@ -242,7 +242,7 @@ class Orchestrator:
                 "ts_utc": datetime.now(timezone.utc).isoformat(),
                 "run_mode": config.run_mode,
                 "sut_model": config.model_name,
-                "clarifier_model": clarifier_model,
+                "user_simulator_model": user_simulator_model,
                 "questions_used": questions_used,
                 "max_questions": max_questions,
                 "action": action.action_type,
@@ -265,7 +265,7 @@ class Orchestrator:
                 # Check quota exhausted
                 if max_questions is not None and questions_used >= max_questions:
                     refusal_answer = "Question limit reached. Proceeding to code phase."
-                    (round_dir / "clarifier.json").write_text(json.dumps({
+                    (round_dir / "user_simulator.json").write_text(json.dumps({
                         "classification": "refuse_illegal",
                         "source": "refuse",
                         "answer": refusal_answer,
@@ -333,14 +333,14 @@ class Orchestrator:
                             encoding="utf-8",
                         )
 
-                # Build question payload for Clarifier (stable, unambiguous formatting)
-                # Note: we still keep asked_question for audit, but Clarifier should use Expected Sub-Questions list.
+                # Build question payload for user simulator (stable, unambiguous formatting)
+                # Note: we still keep asked_question for audit, but user simulator should use Expected Sub-Questions list.
                 action_content_truncated = "\n".join([f"q{i+1}: {q}" for i, q in enumerate(sub_questions)])
 
                 expected_sub_questions = list(sub_questions)
 
-                # Call Clarifier (with one retry on format/alignment mismatch)
-                # Disable tracker for clarifier calls (only count ClarifyAgent, not oracle)
+                # Call user simulator (with one retry on format/alignment mismatch)
+                # Disable tracker for user simulator calls (only count ClarifyAgent, not oracle)
                 from llm_connect.usage_tracker import get_tracker, set_tracker
                 saved_tracker = get_tracker()
                 set_tracker(None)
@@ -355,13 +355,13 @@ class Orchestrator:
                     )
                 finally:
                     set_tracker(saved_tracker)
-                (round_dir / "clarifier_messages.json").write_text(
+                (round_dir / "user_simulator_messages.json").write_text(
                     json.dumps(clar.messages, ensure_ascii=False, indent=2),
                     encoding="utf-8",
                 )
-                (round_dir / "clarifier_raw.txt").write_text(clar.raw_response or "", encoding="utf-8")
+                (round_dir / "user_simulator_raw.txt").write_text(clar.raw_response or "", encoding="utf-8")
                 if getattr(clar, "parse_error", None):
-                    (round_dir / "clarifier_parse_error.json").write_text(
+                    (round_dir / "user_simulator_parse_error.json").write_text(
                         json.dumps(
                             {
                                 "error": clar.parse_error,
@@ -406,13 +406,13 @@ class Orchestrator:
                     }
 
                 clar_answer_dicts = [_to_answer_dict(a) for a in (clar.answers or [])]
-                ok_align, align_err = validate_clarifier_alignment(
+                ok_align, align_err = validate_user_simulator_alignment(
                     expected_sub_questions=expected_sub_questions,
-                    clarifier_answers=clar_answer_dicts,
+                    user_simulator_answers=clar_answer_dicts,
                 )
 
                 if not ok_align:
-                    (round_dir / "clarifier_alignment_error.json").write_text(
+                    (round_dir / "user_simulator_alignment_error.json").write_text(
                         json.dumps(
                             {
                                 "error": align_err,
@@ -427,7 +427,7 @@ class Orchestrator:
                         encoding="utf-8",
                     )
                     # Retry once with explicit feedback injected into the prompt.
-                    # Disable tracker for clarifier retry (only count ClarifyAgent)
+                    # Disable tracker for user simulator retry (only count ClarifyAgent)
                     saved_tracker_retry = get_tracker()
                     set_tracker(None)
                     try:
@@ -444,14 +444,14 @@ class Orchestrator:
                         )
                     finally:
                         set_tracker(saved_tracker_retry)
-                    (round_dir / "clarifier_retry_raw.txt").write_text(clar_retry.raw_response or "", encoding="utf-8")
+                    (round_dir / "user_simulator_retry_raw.txt").write_text(clar_retry.raw_response or "", encoding="utf-8")
                     clar = clar_retry
                     clar_answer_dicts = [_to_answer_dict(a) for a in (clar.answers or [])]
-                    ok_align, align_err = validate_clarifier_alignment(
+                    ok_align, align_err = validate_user_simulator_alignment(
                         expected_sub_questions=expected_sub_questions,
-                        clarifier_answers=clar_answer_dicts,
+                        user_simulator_answers=clar_answer_dicts,
                     )
-                    (round_dir / "clarifier_alignment_after_retry.json").write_text(
+                    (round_dir / "user_simulator_alignment_after_retry.json").write_text(
                         json.dumps({"ok": ok_align, "error": align_err}, ensure_ascii=False, indent=2),
                         encoding="utf-8",
                     )
@@ -463,7 +463,7 @@ class Orchestrator:
                             "sub_question": q,
                             "classification": "refuse_illegal",
                             "source": "refuse",
-                            "answer": "I cannot answer this because the clarifier response was invalid.",
+                            "answer": "I cannot answer this because the user simulator response was invalid.",
                             "ref": None,
                             "slot_id": None,
                         }
@@ -472,7 +472,7 @@ class Orchestrator:
                     # Preserve a combined-level classification/source for auditing.
                     combined_classification = "refuse_illegal"
                     combined_source = "refuse"
-                    combined_answer = "Clarifier output invalid; synthesized refusal answers."
+                    combined_answer = "User simulator output invalid; synthesized refusal answers."
                     combined_ref = None
                 else:
                     combined_classification = clar.classification
@@ -481,7 +481,7 @@ class Orchestrator:
                     combined_ref = clar.ref
 
                 clar_rec = {
-                    "model": clarifier_model,
+                    "model": user_simulator_model,
                     "answers": clar_answer_dicts,
                     "classification": combined_classification,
                     "source": combined_source,
@@ -489,9 +489,9 @@ class Orchestrator:
                     "ref": combined_ref,
                     "expected_sub_questions": expected_sub_questions,
                 }
-                (round_dir / "clarifier.json").write_text(json.dumps(clar_rec, ensure_ascii=False, indent=2), encoding="utf-8")
+                (round_dir / "user_simulator.json").write_text(json.dumps(clar_rec, ensure_ascii=False, indent=2), encoding="utf-8")
 
-                # Charge quota by asked sub-questions (not by clarifier reply length).
+                # Charge quota by asked sub-questions (not by user simulator reply length).
                 questions_used += len(expected_sub_questions)
 
                 for d in clar_answer_dicts:
@@ -515,7 +515,7 @@ class Orchestrator:
                     "actual_answer_count": len(clar_answer_dicts),
                     "parse_method": parse_method,
                     "truncated": truncated,
-                    "clarifier": clar_rec,
+                    "user_simulator": clar_rec,
                 })
                 continue
 
@@ -702,10 +702,10 @@ class Orchestrator:
                             (round_dir / "ask_truncated.json").exists()
                             or (round_dir / "ask_truncated_per_ask.json").exists()
                         )
-                        clarifier = self._read_json_if_exists(round_dir / "clarifier.json")
-                        if isinstance(clarifier, dict):
-                            rec["clarifier"] = clarifier
-                            answers = clarifier.get("answers")
+                        user_simulator_resp = self._read_json_if_exists(round_dir / "user_simulator.json")
+                        if isinstance(user_simulator_resp, dict):
+                            rec["user_simulator"] = user_simulator_resp
+                            answers = user_simulator_resp.get("answers")
                             if isinstance(answers, list):
                                 rec["actual_answer_count"] = len(answers)
                         if (round_dir / "max_questions.json").exists():

@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 from jinja2 import Environment, FileSystemLoader
 
 from core.prompt_loader import load_prompt_yaml
-from core.schemas.clarifier import ClarifierResponseSchema
+from core.schemas.user_simulator import UserSimulatorResponseSchema
 from core.structured_outlines import resolve_outlines_credentials, structured_json, structured_outputs_enabled
 from llm_connect.config import get_llm_params
 from llm_connect.utils import create_llm_client_from_profile
@@ -20,7 +20,7 @@ PROMPT_DIR = Path(__file__).parent / "prompts"
 
 
 @dataclass(frozen=True)
-class ClarifierAnswerItem:
+class UserSimulatorAnswerItem:
     sub_question: str
     classification: str  # "hit" | "fallback" | "refuse_need_data" | "refuse_too_broad" | "refuse_illegal" | "refuse_irrelevant"
     source: str  # "lib" | "fallback" | "refuse"
@@ -31,8 +31,8 @@ class ClarifierAnswerItem:
 
 
 @dataclass(frozen=True)
-class ClarifierResult:
-    answers: List[ClarifierAnswerItem]
+class UserSimulatorResult:
+    answers: List[UserSimulatorAnswerItem]
     raw_response: str
     messages: List[Dict[str, str]]
     parse_error: Optional[str] = None
@@ -195,7 +195,7 @@ def _normalize_ref_for_classification(
     return ref, canonical_value
 
 
-def _parse_single_answer(data: Dict[str, Any], sub_question: str = "") -> ClarifierAnswerItem:
+def _parse_single_answer(data: Dict[str, Any], sub_question: str = "") -> UserSimulatorAnswerItem:
     details = data.get("details") if isinstance(data.get("details"), dict) else None
 
     classification = _normalize_classification(str(data.get("classification") or "fallback"))
@@ -212,7 +212,7 @@ def _parse_single_answer(data: Dict[str, Any], sub_question: str = "") -> Clarif
         canonical_value = ref
     ref, canonical_value = _normalize_ref_for_classification(classification, ref, canonical_value)
 
-    return ClarifierAnswerItem(
+    return UserSimulatorAnswerItem(
         sub_question=sub_question or str(data.get("sub_question", "")),
         classification=classification,
         source=str(source),
@@ -285,12 +285,12 @@ def _source_for_structured_classification(classification: str) -> str:
 
 
 def _build_structured_result(
-    result: ClarifierResponseSchema,
+    result: UserSimulatorResponseSchema,
     *,
     raw_response: str,
     messages: List[Dict[str, str]],
-) -> ClarifierResult:
-    items: List[ClarifierAnswerItem] = []
+) -> UserSimulatorResult:
+    items: List[UserSimulatorAnswerItem] = []
     for ans in result.answers:
         answer = _sanitize_answer(ans.answer or "")
         if not answer:
@@ -303,7 +303,7 @@ def _build_structured_result(
         ref = ans.ref or ans.canonical_value
         canonical_value = ans.canonical_value or ans.ref
         ref, canonical_value = _normalize_ref_for_classification(classification, ref, canonical_value)
-        item = ClarifierAnswerItem(
+        item = UserSimulatorAnswerItem(
             sub_question=ans.sub_question,
             classification=classification,
             source=source,
@@ -313,7 +313,7 @@ def _build_structured_result(
             ref=ref,
         )
         items.append(item)
-    return ClarifierResult(answers=items, raw_response=raw_response, messages=messages)
+    return UserSimulatorResult(answers=items, raw_response=raw_response, messages=messages)
 
 
 class UserSimulator:
@@ -344,7 +344,7 @@ class UserSimulator:
         question: str,
         expected_sub_questions: Optional[List[str]] = None,
         runtime_feedback: Optional[str] = None,
-    ) -> ClarifierResult:
+    ) -> UserSimulatorResult:
         ctx = {
             "query_full_text": query_full_text,
             "question": question,
@@ -370,7 +370,7 @@ class UserSimulator:
                 parsed = structured_json(
                     model_name=model_name,
                     prompt=prompt_content,
-                    schema=ClarifierResponseSchema,
+                    schema=UserSimulatorResponseSchema,
                     base_url=base_url,
                     api_key=api_key,
                     **(params or {}),
@@ -392,7 +392,7 @@ class UserSimulator:
 
         raw = llm.generate(messages, **(params or {}))
 
-        def _parse_answers(raw_text: str) -> tuple[Optional[ClarifierResult], Optional[str]]:
+        def _parse_answers(raw_text: str) -> tuple[Optional[UserSimulatorResult], Optional[str]]:
             parsed = _extract_json_object(raw_text or "")
             error = _validate_parsed_answers(parsed, expected_sub_questions or [])
             if error:
@@ -402,7 +402,7 @@ class UserSimulator:
                 if isinstance(ans_data, dict):
                     item = _parse_single_answer(ans_data)
                     if not item.answer:
-                        item = ClarifierAnswerItem(
+                        item = UserSimulatorAnswerItem(
                             sub_question=item.sub_question,
                             classification="refuse_illegal" if item.classification == "fallback" else item.classification,
                             source="refuse" if item.source == "fallback" else item.source,
@@ -415,7 +415,7 @@ class UserSimulator:
             if not items:
                 return None, "answers_empty_after_parse"
             return (
-                ClarifierResult(
+                UserSimulatorResult(
                     answers=items,
                     raw_response=raw_text or "",
                     messages=messages,
@@ -432,7 +432,7 @@ class UserSimulator:
             raw_retry = llm.generate(retry_messages, **(params or {}))
             result, error = _parse_answers(raw_retry or "")
             if result:
-                return ClarifierResult(
+                return UserSimulatorResult(
                     answers=result.answers,
                     raw_response=result.raw_response,
                     messages=result.messages,
@@ -443,18 +443,18 @@ class UserSimulator:
             # Final fallback: synthesize refusal answers to preserve alignment.
             fallback_questions = expected_sub_questions or [question]
             answers = [
-                ClarifierAnswerItem(
+                UserSimulatorAnswerItem(
                     sub_question=q,
                     classification="refuse_illegal",
                     source="refuse",
-                    answer="I cannot answer this because the clarifier response was invalid.",
+                    answer="I cannot answer this because the user simulator response was invalid.",
                     canonical_value=None,
                     details=None,
                     ref=None,
                 )
                 for q in fallback_questions
             ]
-            return ClarifierResult(
+            return UserSimulatorResult(
                 answers=answers,
                 raw_response=raw_retry or "",
                 messages=retry_messages,
@@ -462,7 +462,7 @@ class UserSimulator:
                 raw_attempts=[raw or "", raw_retry or ""],
             )
 
-        return ClarifierResult(
+        return UserSimulatorResult(
             answers=result.answers,
             raw_response=result.raw_response,
             messages=result.messages,

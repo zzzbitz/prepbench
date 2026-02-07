@@ -5,7 +5,7 @@ from typing import Any, Dict, Literal, Optional
 from core.schemas.base import OAISchemaBase
 
 
-class ClarifierAnswerItemSchema(OAISchemaBase):
+class UserSimulatorAnswerItemSchema(OAISchemaBase):
     sub_question: str
     classification: Literal[
         "hit",
@@ -22,5 +22,5 @@ class ClarifierAnswerItemSchema(OAISchemaBase):
     details: Optional[Dict[str, Any]] = None
 
 
-class ClarifierResponseSchema(OAISchemaBase):
-    answers: list[ClarifierAnswerItemSchema]
+class UserSimulatorResponseSchema(OAISchemaBase):
+    answers: list[UserSimulatorAnswerItemSchema]
