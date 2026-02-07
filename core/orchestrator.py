@@ -579,6 +579,67 @@ class Orchestrator:
         except Exception:
             return None
 
+    def _read_profile_summary(self, cache_root: Path) -> Optional[str]:
+        summary_path = cache_root / "profile" / "summary.json"
+        if not summary_path.exists():
+            return None
+        data = self._read_json_if_exists(summary_path)
+        if not isinstance(data, dict):
+            return None
+        summary = data.get("summary")
+        error = data.get("error")
+        if error or not isinstance(summary, str) or not summary.strip():
+            return None
+        return summary
+
+    def _profile_cache_roots(self, tdir: Path, config: ExperimentConfig) -> list[Path]:
+        # Profile artifacts are produced under interact/orig/disamb roots.
+        # Keep current mode first when it is profile-capable.
+        current_mode = str(config.run_mode or "").strip().lower()
+        ordered_modes: list[str] = []
+        if current_mode in {"orig", "disamb", "interact"}:
+            ordered_modes.append(current_mode)
+        for mode in ("interact", "disamb", "orig"):
+            if mode not in ordered_modes:
+                ordered_modes.append(mode)
+
+        roots: list[Path] = []
+        for mode in ordered_modes:
+            mode_cfg = dataclasses.replace(config, run_mode=mode)
+            roots.append(get_output_path(tdir, mode_cfg))
+        return roots
+
+    def _find_profile_cache(self, tdir: Path, config: ExperimentConfig) -> tuple[Optional[str], Optional[Path]]:
+        for root in self._profile_cache_roots(tdir, config):
+            summary = self._read_profile_summary(root)
+            if summary is not None:
+                return summary, root
+        return None, None
+
+    def _materialize_reused_profile_summary(
+        self,
+        target_root: Path,
+        summary: str,
+        source_root: Optional[Path],
+    ) -> None:
+        if not isinstance(summary, str) or not summary.strip():
+            return
+        profile_root = target_root / "profile"
+        profile_root.mkdir(parents=True, exist_ok=True)
+        payload: Dict[str, Any] = {
+            "summary": summary,
+            "error": None,
+            "rounds": 0,
+            "reused": True,
+        }
+        if source_root is not None:
+            payload["reused_from"] = str(source_root)
+        (profile_root / "summary.json").write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        (profile_root / "summary.txt").write_text(summary, encoding="utf-8")
+
     def _run_interact(self, tdir: Path, config: ExperimentConfig) -> Dict[str, Any]:
         """Run interact mode as e2e pipeline without flow stage."""
         interact_cfg = dataclasses.replace(config, run_mode="interact")
@@ -671,20 +732,6 @@ class Orchestrator:
                 rounds = len(clarify_history)
             return qa_history, clarify_history, rounds
 
-        def _load_profile_summary(cache_root: Path) -> Optional[str]:
-            summary_path = cache_root / "profile" / "summary.json"
-            if not summary_path.exists():
-                return None
-            try:
-                data = json.loads(summary_path.read_text(encoding="utf-8"))
-            except Exception:
-                return None
-            summary = data.get("summary")
-            error = data.get("error")
-            if error or not isinstance(summary, str) or not summary.strip():
-                return None
-            return summary
-
         inputs = [p.name for p in sorted(Path(ctx["input_dir"]).glob("*.csv"))]
 
         # Load cached interact artifacts for this model; regenerate if missing.
@@ -712,7 +759,8 @@ class Orchestrator:
         profile_error: Optional[str] = None
         profile_cfg = dataclasses.replace(config, run_mode="interact")
         profile_output_root = interact_output_root
-        cached_summary = _load_profile_summary(profile_output_root)
+        profile_usage_root = interact_output_root
+        cached_summary, cached_profile_root = self._find_profile_cache(tdir, profile_cfg)
         if cached_summary is None:
             profile_result = self._run_profile_phase(
                 tdir=tdir,
@@ -726,13 +774,24 @@ class Orchestrator:
             regen_error = profile_result.get("error") if isinstance(profile_result, dict) else None
             if isinstance(regen_error, str) and regen_error.strip():
                 profile_error = regen_error
-            cached_summary = _load_profile_summary(profile_output_root)
+            cached_summary, cached_profile_root = self._find_profile_cache(tdir, profile_cfg)
             if cached_summary is None:
                 regenerated_summary = profile_result.get("summary") if isinstance(profile_result, dict) else None
                 if isinstance(regenerated_summary, str):
                     cached_summary = regenerated_summary
                 else:
                     cached_summary = ""
+                cached_profile_root = interact_output_root
+            profile_usage_root = interact_output_root
+        else:
+            if cached_profile_root is not None:
+                profile_usage_root = cached_profile_root
+                if cached_profile_root != interact_output_root:
+                    self._materialize_reused_profile_summary(
+                        target_root=interact_output_root,
+                        summary=cached_summary,
+                        source_root=cached_profile_root,
+                    )
         profile_summary = cached_summary
 
         def _zero_usage() -> dict:
@@ -956,7 +1015,7 @@ class Orchestrator:
             )
             # Merge token usage: clarify/profile from cache, code from existing or tracker, flow from tracker
             clarify_usage = _read_token_section(interact_output_root / "token_usage.json", "clarify")
-            profile_usage = _read_token_section(profile_output_root / "token_usage.json", "profile")
+            profile_usage = _read_token_section(profile_usage_root / "token_usage.json", "profile")
             tracker_data = tracker.to_dict()
             
             # If code phase was skipped, read code usage from existing token_usage.json
@@ -1198,18 +1257,20 @@ class Orchestrator:
             profile_error = None
             reuse_profile = False
             prev_profile_usage: Optional[dict] = None
-            summary_path = output_root / "profile" / "summary.json"
-            if summary_path.exists():
-                cached = self._read_json_if_exists(summary_path)
-                if isinstance(cached, dict):
-                    cached_summary = cached.get("summary")
-                    cached_error = cached.get("error")
-                    if isinstance(cached_summary, str) and cached_summary.strip() and not cached_error:
-                        profile_summary = cached_summary
-                        reuse_profile = True
-                        prev_usage = self._read_json_if_exists(output_root / "token_usage.json")
-                        if isinstance(prev_usage, dict):
-                            prev_profile_usage = prev_usage.get("profile")
+            cached_summary, cached_profile_root = self._find_profile_cache(tdir, config)
+            if cached_summary is not None:
+                profile_summary = cached_summary
+                reuse_profile = True
+                usage_root = cached_profile_root or output_root
+                prev_usage = self._read_json_if_exists(usage_root / "token_usage.json")
+                if isinstance(prev_usage, dict):
+                    prev_profile_usage = prev_usage.get("profile")
+                if usage_root != output_root:
+                    self._materialize_reused_profile_summary(
+                        target_root=output_root,
+                        summary=cached_summary,
+                        source_root=usage_root,
+                    )
 
             if not reuse_profile:
                 tracker.set_phase("profile")
