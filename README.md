@@ -56,6 +56,41 @@ llm:
 OPENROUTER_API_KEY="your-key"
 ```
 
+## Fast Run Path (Keep It Simple)
+
+If you only care about "how to run":
+
+1) Set API key in `.env`.
+2) Pick one mode script and run:
+
+```bash
+./scripts/run_orig.sh --case 1
+# or:
+./scripts/run_disamb.sh --case 1
+./scripts/run_interact.sh --case 1
+./scripts/run_disamb_only.sh --case 1
+./scripts/run_flow.sh --case 1
+./scripts/run_e2e.sh --case 1
+```
+
+3) Check run result:
+
+```bash
+cat @output/<model_info>/<run_mode>/case_001/solution/final_status.json
+```
+
+4) Evaluate a full run root:
+
+```bash
+python -m evaluate.batch --results-root @output/<model_info>/<run_mode>
+```
+
+The evaluation summary CSV will be written to:
+
+```bash
+@output/<model_info>/<run_mode>/evaluation_summary.csv
+```
+
 ## Quickstart (1 minute)
 
 1) Create `.env` at the repo root:

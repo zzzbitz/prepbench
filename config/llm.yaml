@@ -13,3 +13,4 @@ user_simulator:
   model: "openrouter/pony-alpha"
   default_params:
     temperature: 0
+    max_tokens: 30000
