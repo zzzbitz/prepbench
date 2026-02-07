@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from agents.code_agent import CodeAgent
-from agents.prep_agent import PrepAgent
+from agents.clarify_agent import ClarifyAgent
 from simulator.user_simulator import UserSimulator
 from core.case_assets import read_reference_solution_text, require_reference_solution_path
 from core.utils.paths import get_output_path
@@ -185,7 +185,7 @@ class Orchestrator:
                 effective_cap = max(int(config.max_questions_cap), amb_count)
                 max_questions = min(max_questions, effective_cap)
 
-        sut = PrepAgent(config.model_name)
+        sut = ClarifyAgent(config.model_name)
         user_simulator = UserSimulator()
 
         from llm_connect.config import get_model_name
@@ -260,7 +260,7 @@ class Orchestrator:
 
             # Handle Code: action (backward compatibility) - treat as done and proceed to code
             if action.action_type == "code":
-                clarify_hist.append({"round": r, "action": "code_early", "note": "PrepAgent output Code, treating as Done"})
+                clarify_hist.append({"round": r, "action": "code_early", "note": "ClarifyAgent output Code, treating as Done"})
                 clarify_stopped_reason = "code_early"
                 runtime_feedback = None
                 break
@@ -347,7 +347,7 @@ class Orchestrator:
                 expected_sub_questions = list(sub_questions)
 
                 # Call Clarifier (with one retry on format/alignment mismatch)
-                # Disable tracker for clarifier calls (only count PrepAgent, not oracle)
+                # Disable tracker for clarifier calls (only count ClarifyAgent, not oracle)
                 from llm_connect.usage_tracker import get_tracker, set_tracker
                 saved_tracker = get_tracker()
                 set_tracker(None)
@@ -434,7 +434,7 @@ class Orchestrator:
                         encoding="utf-8",
                     )
                     # Retry once with explicit feedback injected into the prompt.
-                    # Disable tracker for clarifier retry (only count PrepAgent)
+                    # Disable tracker for clarifier retry (only count ClarifyAgent)
                     saved_tracker_retry = get_tracker()
                     set_tracker(None)
                     try:

@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 from jinja2 import Environment, FileSystemLoader
 
 from core.data_head import DataHead
-from core.prompt_loader import load_prompt_yaml
+from core.prompt_loader import PromptConfigError, load_prompt_yaml
 from core.text_utils import extract_single_code_block
 from llm_connect.config import get_llm_params
 from llm_connect.utils import create_llm_client_from_profile
@@ -20,13 +20,17 @@ class InteractAction:
     parse_error: Optional[str] = None
 
 
-class PrepAgent:
+class ClarifyAgent:
     def __init__(self, model_name: str, data_head: Optional[DataHead] = None) -> None:
         self.model_name = model_name
         self.data_head = data_head or DataHead()
         template_dir = Path(__file__).parent / "prompts" / "templates"
         self.jinja_env = Environment(loader=FileSystemLoader(template_dir), trim_blocks=True, lstrip_blocks=True)
-        self.template = self.jinja_env.get_template("prep_agent.jinja2")
+        # Prefer the renamed clarify template and keep prep template as fallback.
+        try:
+            self.template = self.jinja_env.get_template("clarify_agent.jinja2")
+        except Exception:
+            self.template = self.jinja_env.get_template("prep_agent.jinja2")
 
     def _collect_context(
         self,
@@ -60,7 +64,10 @@ class PrepAgent:
         return ctx
 
     def _build_prompt(self, ctx: Dict[str, Any]) -> str:
-        cfg = load_prompt_yaml("prep_agent", required_keys=("system", "guidelines"))
+        try:
+            cfg = load_prompt_yaml("clarify_agent", required_keys=("system", "guidelines"))
+        except PromptConfigError:
+            cfg = load_prompt_yaml("prep_agent", required_keys=("system", "guidelines"))
         return self.template.render(
             system_prompt_text=cfg["system"],
             guidelines_text=cfg["guidelines"],
@@ -158,8 +165,12 @@ class PrepAgent:
         prompt_content = self._build_prompt(ctx)
         messages = [{"role": "user", "content": prompt_content}]
 
-        params = get_llm_params("PrepAgent", "generate_action") or {}
+        params = get_llm_params("ClarifyAgent", "generate_action") or get_llm_params("PrepAgent", "generate_action") or {}
         raw_response = llm.generate(messages, **(params or {}))
 
         action = self._parse_action(raw_response or "")
         return action, raw_response, messages
+
+
+# Backward compatibility for older imports.
+PrepAgent = ClarifyAgent
