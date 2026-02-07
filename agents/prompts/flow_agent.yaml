@@ -6,43 +6,15 @@ system: |
   Output ONLY a valid JSON object (the flow.json). No markdown, no explanation, no extra text.
 
 core_guidelines: |
-  ## Goal and Constraints
-  - Use only `solution.py` and this operator contract.
-  - The DAG must validate and execute under py2flow.
-  - **SCRIPT USAGE GUIDANCE** (length enforced at runtime):
-    • inline_code length ≤ 1500 characters
-    • Script count is not enforced, but should be kept minimal
-    • Use script ONLY as last resort when no standard operators apply
+  Use only `solution.py` and this operator contract to produce one `flow.json` that py2flow can validate and execute. Return ONLY a valid JSON object with no markdown and no extra text.
 
-  ## flow.json Schema
-  - Top-level: `id`, `name`, `version` (optional), `nodes`.
-  - `nodes`: node_id -> {kind, inputs?, params?, label?, description?}; no extra keys.
-  - `kind` is lowercase and must be one of: input, project, filter, join, union, aggregate, dedup, sort, pivot, output, script.
+  Keep the graph valid by construction: use top-level `id/name/nodes` (optional `version`), keep kinds lowercase and supported, ensure all references exist, keep the DAG acyclic, and make every node contribute to at least one output.
 
-  ## Graph Constraints
-  - All referenced input ids exist.
-  - DAG is acyclic.
-  - Every node is reachable from at least one output node.
+  Respect runtime path contracts: read from `inputs/<file>.csv` (or `input.mode="line"` for true line-based text inputs), write outputs to `flow_cand/<filename>.csv`, and do not rely on path escapes.
 
-  ## I/O Contract
-  - Paths are resolved relative to the directory containing flow.json; `..` escapes are rejected.
-  - Read inputs from `inputs/<file>.csv` unless `solution.py` clearly reads a text file; use `input.mode="line"` then.
-  - Write outputs to `flow_cand/<filename>.csv`, matching the filenames produced by `solution.py`.
-  - Do not add sorting or column reordering unless `solution.py` does.
+  Use script nodes only as a last resort and keep inline code short (target <= 1500 chars). Prefer standard operators whenever possible.
 
-  ## Input Shapes
-  - input: no inputs (omit or `{}`).
-  - Unary kinds (project/filter/aggregate/dedup/sort/pivot/output/script): `{"in": "<node>"}`.
-  - join: `{"left": "<node>", "right": "<node>"}`.
-  - union: `{"items": ["a", "b", ...]}` (len >= 2).
-
-  ## Expression Language
-  - Evaluated with `eval` over: `df`, `pd`, `np`, `re`, `__row_pos`, and safe builtins (len, range, min, max, sum, any, all, sorted, ...).
-  - Columns with safe identifiers can be referenced directly; otherwise use `df['Col']` or backticks: `` `Col` ``.
-  - Predicate-style exprs must return bool or a boolean Series.
-
-  ## JSON Output Requirement
-  Output ONLY the JSON object (flow.json). No markdown, no explanation.
+  Expression context is `df`, `pd`, `np`, `re`, `__row_pos`, and safe builtins. Columns with safe identifiers may be referenced directly; otherwise use `df['Col']` or backticks.
 
 operator_definitions: |
   ## Operator Definitions (strict params; unknown keys fail validation)
@@ -114,8 +86,8 @@ operator_definitions: |
   ### output
   Params: path (required), write_order (bool), schema_enforce (bool), schema (columns/order/dtype), datetime_format (map), encoding, lineterminator.
 
-  ### script (last resort - STRICT LENGTH LIMIT)
-  **Constraints**: inline_code MUST be ≤1500 chars. Script count is not enforced but should be minimal.
+  ### script (last resort)
+  Keep inline_code short (target <=1500 chars). Script count is not enforced but should be minimal.
   Params: deterministic (bool), side_effects (bool), inline_code (string).
   - inline_code must define: transform(df, pd, np) -> DataFrame.
   - Allowed import roots: calendar, collections, datetime, decimal, functools, itertools, json, locale, math, numpy, pandas, re, time, _strptime, statistics, string, typing.
@@ -194,23 +166,23 @@ operator_cookbook: |
   }
 
 exec_error_instructions: |
-  ## Fixing Errors
+  ## Fixing Errors (use `feedback.type`)
 
-  The previous flow.json had errors. Fix based on feedback below.
+  Apply targeted fixes only; keep unchanged nodes untouched and return ONLY corrected JSON.
 
-  ### Common Issues
-  - JSON parse errors: invalid escaping inside inline_code.
-  - Unknown params keys: remove them (py2flow rejects unknown keys strictly).
-  - Wrong input shape: unary nodes require `inputs: {"in": ...}`; join uses left/right; union uses items list.
-  - Script node: must include boolean deterministic and side_effects, and inline_code with transform(df, pd, np).
-  - Pivot: use correct mode + required fields (pivot_wider/longer/longer_from_rows/longer_paired).
-  - Aggregate funcs: only sum|count|min|max|avg|count_distinct|prod are allowed.
-  - Dedup: keep first/last with keys and all_cols requires non-empty order_by.
-  - Project: select runs before compute (split into two nodes if needed).
-  - Filter: predicate must return bool or boolean Series.
-  - Join: prefer on for same-name keys; do not select suffixed key columns for join keys.
-  - Union: params.distinct is required; align must be by_name; type_coerce must be error.
-  - Unreachable nodes: remove nodes that do not contribute to any output.
-  - Output paths: must be under flow_cand/.
+  - If `feedback.type == "json_parse"`:
+    - Fix JSON syntax/escaping only (especially script `inline_code` escaping).
+    - Do not redesign the DAG unless parse failure was caused by illegal structure.
 
-  Return ONLY the corrected JSON.
+  - If `feedback.type == "validation"`:
+    - Fix schema/contract mismatches only: unknown params, wrong `inputs` shape, unsupported kinds/funcs, missing required params, unreachable nodes, invalid output path.
+    - Keep business logic unchanged; correct structure first.
+
+  - If `feedback.type == "execution"`:
+    - Fix only the failed node path and its immediate dependencies.
+    - Typical fixes: expression type mismatch, wrong join keys/mode, bad map args, invalid script function signature.
+    - Keep output filenames and overall DAG topology stable unless failure proves topology is wrong.
+
+  - If `feedback.type == "no_outputs"`:
+    - Ensure at least one `output` node writes CSV files under `flow_cand/`.
+    - Ensure output node inputs are connected to produced upstream tables.
