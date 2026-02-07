@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from typing import Any, Dict, Tuple
-import json
 import re
+from pathlib import Path
 
 from core.prompt_loader import load_prompt_yaml
 from llm_connect.utils import create_llm_client_from_profile
 from llm_connect.config import get_llm_params
 from core.utils.code import extract_code_from_response
-from jinja2 import Template
+from jinja2 import Environment, FileSystemLoader
 
 
 class ProfileAgent:
@@ -23,6 +23,12 @@ class ProfileAgent:
     def __init__(self, model_name: str) -> None:
         self.model_name = model_name
         self._llm = None
+        template_dir = Path(__file__).parent / "prompts" / "templates"
+        self.jinja_env = Environment(
+            loader=FileSystemLoader(template_dir),
+            trim_blocks=True,
+            lstrip_blocks=True,
+        )
 
     def _get_llm(self):
         if self._llm is None:
@@ -32,9 +38,13 @@ class ProfileAgent:
         return self._llm
 
     def _render_prompt(self, name: str, context: Dict[str, Any]) -> str:
-        prompt_cfg = load_prompt_yaml(name)
-        template = prompt_cfg.get("template", "")
-        return Template(template).render(**context)
+        prompt_cfg = load_prompt_yaml(name, required_keys=("system", "guidelines"))
+        template = self.jinja_env.get_template(f"{name}.jinja2")
+        return template.render(
+            system_prompt_text=prompt_cfg["system"],
+            guidelines_text=prompt_cfg["guidelines"],
+            context=context,
+        )
 
     def generate_profile_code(
         self,
@@ -53,8 +63,8 @@ class ProfileAgent:
             {
                 "query_md": session_state.get("query", ""),
                 "task_dir": session_state.get("task_dir", ""),
-                "inputs": json.dumps(session_state.get("inputs", []), ensure_ascii=False),
-                "inputs_preview": json.dumps(session_state.get("inputs_preview", {}), ensure_ascii=False),
+                "inputs": session_state.get("inputs", []),
+                "inputs_preview": session_state.get("inputs_preview", {}),
             },
         )
 
@@ -96,11 +106,11 @@ class ProfileAgent:
             {
                 "query_md": session_state.get("query", ""),
                 "task_dir": session_state.get("task_dir", ""),
-                "inputs": json.dumps(session_state.get("inputs", []), ensure_ascii=False),
+                "inputs": session_state.get("inputs", []),
                 "execution_status": status,
                 "stdout": stdout,
                 "stderr_section": stderr_section,
-                "max_summary_chars": str(max_summary_chars),
+                "max_summary_chars": max_summary_chars,
             },
         )
 
@@ -203,7 +213,7 @@ class ProfileAgent:
                 "round1_stdout": r1_stdout,
                 "round2_status": r2_status,
                 "round2_stdout": r2_stdout,
-                "max_summary_chars": str(max_summary_chars),
+                "max_summary_chars": max_summary_chars,
             },
         )
 

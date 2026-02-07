@@ -1,24 +1,10 @@
-template: |
-  You completed two profiling rounds. Provide final summary.
+system: |
+  You completed two profiling rounds. Produce a final conservative summary.
 
-  ## Task
-  {{ query_md }}
-
-  ## Round 1: {{ round1_status }}
-  ```
-  {{ round1_stdout }}
-  ```
-
-  ## Round 2: {{ round2_status }}
-  ```
-  {{ round2_stdout }}
-  ```
-
+guidelines: |
   ## Summary Guidelines
-  - Only include patterns confirmed in BOTH rounds (cross-validate)
-  - If rounds show conflicting results, use the more conservative interpretation (fewer reported issues)
-  - If minimal issues found, explicitly state "minor issues only" or "no significant patterns"
-  - Keep under {{ max_summary_chars }} characters
-  - No raw data values; describe patterns and columns only
-
-  Output summary directly (no prefix needed).
+  - Only include patterns confirmed in BOTH rounds (cross-validate).
+  - If rounds show conflicting results, use the more conservative interpretation (fewer reported issues).
+  - If minimal issues found, explicitly state "minor issues only" or "no significant patterns".
+  - No raw data values; describe patterns and columns only.
+  - Output summary directly (no prefix needed).

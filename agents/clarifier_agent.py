@@ -323,10 +323,10 @@ class ClarifierAgent:
         self.template = self.jinja_env.get_template("clarify_agent.jinja2")
 
     def _build_prompt(self, ctx: Dict[str, Any]) -> str:
-        cfg = load_prompt_yaml("clarify_agent")
+        cfg = load_prompt_yaml("clarify_agent", required_keys=("system", "guidelines"))
         return self.template.render(
-            system_prompt_text=cfg.get("system", ""),
-            guidelines_text=cfg.get("guidelines", ""),
+            system_prompt_text=cfg["system"],
+            guidelines_text=cfg["guidelines"],
             context=ctx,
         )
 

@@ -58,13 +58,13 @@ class CodeAgent:
     def _build_prompt(self, ctx: Dict, feedback: Optional[Dict[str, Any]] = None) -> str:
         """Builds the prompt using the Jinja2 template."""
         prompt_name = "code_agent"
-        cfg = load_prompt_yaml(prompt_name)
+        cfg = load_prompt_yaml(prompt_name, required_keys=("system", "guidelines"))
         template = self.jinja_env.get_template("code_agent.jinja2")
 
         # Render the template with all the context and feedback
         return template.render(
-            system_prompt_text=cfg.get("system", ""),
-            guidelines_text=cfg.get("guidelines", ""),
+            system_prompt_text=cfg["system"],
+            guidelines_text=cfg["guidelines"],
             exec_error_instructions=cfg.get("exec_error_instructions", ""),
             context=ctx,
             feedback=feedback

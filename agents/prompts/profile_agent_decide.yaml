@@ -1,31 +1,18 @@
-template: |
-  You have executed a profiling script. Decide next action.
+system: |
+  You have executed a profiling script. Decide the next action for profiling.
 
-  ## Task
-  {{ query_md }}
-
-  ## Input Data
-  Task dir: {{ task_dir }}
-  Inputs: {{ inputs }}
-
-  ## Execution Result
-  Status: {{ execution_status }}
-  ```
-  {{ stdout }}
-  ```
-  {{ stderr_section }}
-
+guidelines: |
   ## Decision
   Choose SUMMARY if you have sufficient dirty data info OR data appears clean. Prefer SUMMARY when possible to avoid over-analysis.
   Choose CODE only if you need deeper profiling or the script failed.
 
   Start response with `SUMMARY:` or `CODE:` on first line.
 
-  ### SUMMARY format (under {{ max_summary_chars }} chars):
+  ## SUMMARY format
   - Brief description of dirty patterns found (or "No significant patterns detected")
   - Cleaning operations (high-confidence only)
   - Evidence: files/columns affected
-  No raw values; no code blocks.
+  - No raw values; no code blocks.
 
-  ### CODE format:
+  ## CODE format
   Output ```python block following same requirements as initial script (read from inputs/, output JSON only, no modifications to data).
