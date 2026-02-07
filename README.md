@@ -138,6 +138,34 @@ Or use shortcut scripts:
 - `e2e`: interact pipeline + code-to-flow
 - `flow`: flow-only execution (requires reference `case_XXX.py` files under `simulator/assets/solutions/`)
 
+## BYOA (Third-Party Agent Frameworks)
+
+For external frameworks, we recommend a single benchmark setting: **E2E**.
+
+You can submit either:
+- **code track**: write CSV outputs to `case_xxx/solution/cand/`
+- **flow track**: write CSV outputs to `case_xxx/solution/flow_cand/`
+
+Public per-case inputs for participants:
+- `data/case_xxx/query.md`
+- `data/case_xxx/inputs/*.csv`
+
+Local benchmark-side components:
+- User simulator local API: `simulator.LocalUserSimulatorAPI`
+- Flow machine-readable contract: `py2flow/flow.schema.json`
+
+Then evaluate with:
+
+```bash
+python -m evaluate.batch --results-root @output/<your_framework>/e2e --candidate-kind auto
+# or force one track:
+python -m evaluate.batch --results-root @output/<your_framework>/e2e --candidate-kind code
+python -m evaluate.batch --results-root @output/<your_framework>/e2e --candidate-kind flow
+```
+
+Full integration contract:
+- `docs/BYOA_E2E.md`
+
 ### Reference Solutions for `flow` and User Simulator
 
 `flow` mode and user simulator alignment both rely on benchmark reference solution files:

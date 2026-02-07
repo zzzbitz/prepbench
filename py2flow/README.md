@@ -7,6 +7,14 @@ It executes a flow (DAG) defined as a Python dict / JSON with a fixed set of ope
 
 `input`, `project`, `filter`, `join`, `union`, `aggregate`, `dedup`, `sort`, `pivot`, `output`, `script`
 
+## JSON Schema
+
+Machine-readable flow contract:
+
+- `py2flow/flow.schema.json`
+
+Use it for pre-validation before calling py2flow runtime. Runtime validation in `py2flow/ir.py` remains authoritative.
+
 ## Python API (in-memory inputs)
 
 Use `input_tables` to inject pandas DataFrames by input node id.

@@ -9,8 +9,8 @@ from tqdm import tqdm
 # Add project root to path
 sys.path.append(str(Path(__file__).parent))
 
-from core.orchestrator import Orchestrator
 from config.experiment_config import ExperimentConfig
+from core.orchestrator import Orchestrator
 from core.utils.paths import get_output_path
 from core.utils.logging_config import configure_logging, get_logger
 from core.orchestration.mode_spec import allowed_run_modes

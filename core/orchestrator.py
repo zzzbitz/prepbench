@@ -10,7 +10,8 @@ from typing import Any, Dict, Optional
 from agents.code_agent import CodeAgent
 from agents.clarify_agent import ClarifyAgent
 from simulator.user_simulator import UserSimulator
-from core.case_assets import read_reference_solution_text, require_reference_solution_path
+from core.case_assets import require_reference_solution_path
+from core.case_views import load_internal_case_view
 from core.utils.paths import get_output_path
 from .executor import CodeExecutor
 from config.experiment_config import ExperimentConfig
@@ -78,55 +79,17 @@ class Orchestrator:
         config: ExperimentConfig,
     ) -> Dict[str, Any]:
         from core.utils.paths import get_output_path
-
-        missing = []
-        invalid_json = []
-
-        if not (tdir / "inputs").is_dir():
-            missing.append("inputs/")
-
-        if not (tdir / "query.md").exists():
-            missing.append("query.md")
-
-        amb_kb_path = tdir / "amb_kb.json"
-        amb_kb_json: Optional[Dict[str, Any]] = None
-        if not amb_kb_path.exists():
-            missing.append("amb_kb.json")
-        else:
-            if amb_kb_path.stat().st_size == 0:
-                invalid_json.append("amb_kb.json (exists but empty)")
-            else:
-                try:
-                    amb_kb_json = json.loads(amb_kb_path.read_text(encoding="utf-8"))
-                    if not isinstance(amb_kb_json, dict):
-                        invalid_json.append("amb_kb.json (not a JSON object)")
-                        amb_kb_json = None
-                except Exception:
-                    invalid_json.append("amb_kb.json (invalid JSON)")
-
-        errors = missing + invalid_json
-        if errors:
-            raise FileNotFoundError(
-                f"[{config.run_mode} mode] Cannot start: {', '.join(errors)} (case: {tdir.name})"
-            )
+        internal_case = load_internal_case_view(tdir)
 
         from llm_connect.config import validate_user_simulator_settings
         validate_user_simulator_settings()
-        # ================================================================
 
         output_root = get_output_path(tdir, config)
-        input_dir = tdir / "inputs"
-
-        solution_text = read_reference_solution_text(tdir)
+        input_dir = internal_case.input_dir
 
         from core.data_head import DataHead
         data_head = DataHead()
         inputs_preview = data_head.get_preview(input_dir)
-
-        query_full_path = tdir / "query_full.md"
-        if not query_full_path.exists():
-            raise FileNotFoundError(f"Query file not found: {query_full_path}")
-        query_full_text = query_full_path.read_text(encoding="utf-8")
 
         query_md_path = resolve_query_path(
             tdir,
@@ -142,10 +105,10 @@ class Orchestrator:
             "output_root": output_root,
             "input_dir": input_dir,
             "query_text": query_text,
-            "query_full_text": query_full_text,
+            "query_full_text": internal_case.query_full_text,
             "inputs_preview": inputs_preview,
-            "amb_kb_json": amb_kb_json or {},
-            "solution_text": solution_text,
+            "amb_kb_json": internal_case.amb_kb_json,
+            "solution_text": internal_case.reference_solution_text,
         }
 
     def _run_clarify_phase(

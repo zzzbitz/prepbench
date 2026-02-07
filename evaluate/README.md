@@ -99,10 +99,22 @@ Behavior:
 - Candidate directory is auto-detected per case:
   - prefer `solution/flow_cand` when present with CSV files
   - otherwise use `solution/cand`
+- Candidate selection can be forced:
+  - `--candidate-kind auto` (default): prefer `flow_cand`, then `cand`
+  - `--candidate-kind code`: only `solution/cand`
+  - `--candidate-kind flow`: only `solution/flow_cand`
 - Output CSV is written to:
   - `<results_root>/evaluation_summary.csv`
 - Accuracy scalar is written to:
   - `<results_root>/acc.txt`
+
+Examples:
+
+```bash
+python -m evaluate.batch --results-root @output/<model>/<run_mode> --candidate-kind auto
+python -m evaluate.batch --results-root @output/<model>/<run_mode> --candidate-kind code
+python -m evaluate.batch --results-root @output/<model>/<run_mode> --candidate-kind flow
+```
 
 CSV columns:
 - `case_name`

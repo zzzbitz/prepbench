@@ -1,0 +1,100 @@
+# BYOA E2E Integration (Local Protocol)
+
+This document defines the local (non-network) integration contract for third-party agent frameworks.
+
+For BYOA, PrepBench uses a single setting: **E2E**.  
+A framework can submit either:
+- **code track** outputs (`solution/cand/*.csv`), or
+- **flow track** outputs (`solution/flow_cand/*.csv`).
+
+## 1) Public Inputs Per Case
+
+Only these public inputs are required by participants:
+- `data/case_xxx/query.md`
+- `data/case_xxx/inputs/*.csv`
+
+`query_full.md`, `amb_kb.json`, GT files, and reference solutions are benchmark-internal assets.
+
+## 2) Local User Simulator Interface
+
+Use `simulator.LocalUserSimulatorAPI` (not HTTP).
+
+```python
+from simulator import LocalUserSimulatorAPI
+
+api = LocalUserSimulatorAPI()
+session = api.start_session(case_id="case_001", run_id="run_001")
+resp = api.ask(
+    session_id=session["session_id"],
+    questions=["What does 'recent' mean in this task?"],
+    round=1,
+)
+```
+
+Response fields include:
+- `round`: current round index (required for debugging/audit).
+- `answers`: list of answer objects.
+- `budget`: round/question usage stats.
+- `done`: whether the session reached its budget limits.
+
+`classification` is a strict enum:
+- `hit`
+- `fallback`
+- `refuse_need_data`
+- `refuse_too_broad`
+- `refuse_illegal`
+- `refuse_irrelevant`
+
+No `unknown` fallback class is used in this protocol.
+
+Detailed local contract:
+- `docs/contracts/USER_SIMULATOR_LOCAL.md`
+
+## 3) Flow Contract (Machine-Readable)
+
+For flow-track systems, validate generated `flow.json` against:
+- `py2flow/flow.schema.json`
+
+Runtime validation and execution are still authoritative in:
+- `py2flow/ir.py`
+- `py2flow/executor.py`
+
+## 4) Submission Layout
+
+Put generated results under one root (example: `@output/my_framework/e2e/`):
+
+```text
+@output/my_framework/e2e/
+  case_001/
+    solution/
+      cand/          # code track (optional)
+        output_01.csv
+      flow_cand/     # flow track (optional)
+        output_01.csv
+  case_002/
+    solution/
+      ...
+```
+
+Rules:
+- Case folder must be named `case_xxx`.
+- CSV file names should match expected names (for example `output_01.csv`).
+- A single run root should contain one primary track (code or flow).
+
+## 5) Evaluation
+
+Run local batch evaluation:
+
+```bash
+python -m evaluate.batch --results-root @output/my_framework/e2e --candidate-kind auto
+python -m evaluate.batch --results-root @output/my_framework/e2e --candidate-kind code
+python -m evaluate.batch --results-root @output/my_framework/e2e --candidate-kind flow
+```
+
+Generated files:
+- `@output/my_framework/e2e/evaluation_summary.csv`
+- `@output/my_framework/e2e/acc.txt`
+
+Scoring fields:
+- `execution`: `success` | `fail`
+- `evaluation`: `correct` | `false`

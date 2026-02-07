@@ -5,6 +5,7 @@ This package contains benchmark-provided simulator components. It is not part of
 ## Layout
 
 - `user_simulator.py`: user simulator implementation.
+- `local_api.py`: local session-based interface (`LocalUserSimulatorAPI`) for BYOA integration.
 - `prompts/`: simulator prompt configs and templates.
 - `assets/solutions/`: reference solutions for each case (`case_XXX.py`).
 
