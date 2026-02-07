@@ -33,6 +33,8 @@ def run_flow_impl(
     cfg = config
     output_root.mkdir(parents=True, exist_ok=True)
     rounds_root = output_root / "rounds"
+    if rounds_root.exists():
+        shutil.rmtree(rounds_root)
 
     session_state = {
         "task_dir": str(tdir),
@@ -65,6 +67,8 @@ def run_flow_impl(
 
     for round_num in range(1, max_rounds + 1):
         round_dir = rounds_root / f"round-{round_num}"
+        if round_dir.exists():
+            shutil.rmtree(round_dir)
         round_dir.mkdir(parents=True, exist_ok=True)
         solution_dir = round_dir / "solution"
         solution_dir.mkdir(parents=True, exist_ok=True)

@@ -64,25 +64,33 @@ class Input(Operator):
                 lines = lines[skiprows:]
             return pd.DataFrame({"raw": pd.Series(lines, dtype="string")})
 
-        options: dict[str, Any] = {}
-        options["sep"] = params.get("delimiter", ",")
-        options["encoding"] = encodings[0]
+        options_base: dict[str, Any] = {}
+        options_base["sep"] = params.get("delimiter", ",")
         if "na_values" in params:
-            options["na_values"] = params.get("na_values")
+            options_base["na_values"] = params.get("na_values")
         if "keep_default_na" in params:
-            options["keep_default_na"] = params.get("keep_default_na")
+            options_base["keep_default_na"] = params.get("keep_default_na")
         if "parse_dates" in params:
-            options["parse_dates"] = params.get("parse_dates")
+            options_base["parse_dates"] = params.get("parse_dates")
         if "dtype" in params:
-            options["dtype"] = params.get("dtype")
+            options_base["dtype"] = params.get("dtype")
         if "skiprows" in params:
-            options["skiprows"] = skiprows
+            options_base["skiprows"] = skiprows
         if "header" in params:
-            options["header"] = params.get("header")
+            options_base["header"] = params.get("header")
         if "on_bad_lines" in params:
-            options["on_bad_lines"] = params.get("on_bad_lines")
+            options_base["on_bad_lines"] = params.get("on_bad_lines")
         if "quotechar" in params:
-            options["quotechar"] = params.get("quotechar")
+            options_base["quotechar"] = params.get("quotechar")
         if "escapechar" in params:
-            options["escapechar"] = params.get("escapechar")
-        return ctx.io.read_df(resolved, "csv", options)
+            options_base["escapechar"] = params.get("escapechar")
+
+        last_exc: BaseException | None = None
+        for enc in encodings:
+            options = dict(options_base)
+            options["encoding"] = enc
+            try:
+                return ctx.io.read_df(resolved, "csv", options)
+            except Exception as exc:
+                last_exc = exc
+        raise ValueError(f"input csv read failed for encodings={encodings}: {last_exc}")

@@ -1,6 +1,4 @@
 from __future__ import annotations
-
-import ast
 from dataclasses import dataclass, field
 from enum import Enum
 from graphlib import CycleError, TopologicalSorter
@@ -24,12 +22,6 @@ class StepKind(str, Enum):
 
 
 _ALLOWED_KINDS: Set[str] = {k.value for k in StepKind}
-_FORBIDDEN_EXPR_HELPERS: Set[str] = {
-    "date_range_to_start",
-    "date_year_only",
-    "date_parse_multi",
-    "group_cumcount",
-}
 
 
 @dataclass
@@ -197,92 +189,8 @@ def raise_validation(
                               error_code=error_code, field=field, help=help)
 
 
-def _rewrite_backtick_columns_for_ast(expr: str) -> str:
-    out: list[str] = []
-    i = 0
-    n = len(expr)
-    quote: str | None = None
-    triple = False
-
-    while i < n:
-        ch = expr[i]
-        if quote is None:
-            if ch in ("'", '"'):
-                if expr[i: i + 3] == ch * 3:
-                    quote = ch
-                    triple = True
-                    out.append(ch * 3)
-                    i += 3
-                    continue
-                quote = ch
-                triple = False
-                out.append(ch)
-                i += 1
-                continue
-            if ch == "`":
-                j = expr.find("`", i + 1)
-                if j == -1:
-                    out.append(ch)
-                    i += 1
-                    continue
-                col = expr[i + 1: j]
-                out.append(f"df[{col!r}]")
-                i = j + 1
-                continue
-            out.append(ch)
-            i += 1
-            continue
-
-        if ch == "\\" and not triple:
-            if i + 1 < n:
-                out.append(expr[i: i + 2])
-                i += 2
-                continue
-        if triple:
-            if expr[i: i + 3] == quote * 3:
-                out.append(quote * 3)
-                i += 3
-                quote = None
-                triple = False
-                continue
-            out.append(ch)
-            i += 1
-            continue
-        if ch == quote:
-            out.append(ch)
-            i += 1
-            quote = None
-            continue
-        out.append(ch)
-        i += 1
-
-    return "".join(out)
-
-
-def _find_forbidden_expr_helpers(expr: str) -> Set[str]:
-    rewritten = _rewrite_backtick_columns_for_ast(expr)
-    try:
-        tree = ast.parse(rewritten, mode="eval")
-    except SyntaxError:
-        return set()
-    found: Set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Name) and node.id in _FORBIDDEN_EXPR_HELPERS:
-            found.add(node.id)
-    return found
-
-
 def _reject_forbidden_expr_helpers(node: Node, expr: str, field: str) -> None:
-    hits = _find_forbidden_expr_helpers(expr)
-    if hits:
-        raise_validation(
-            node.id,
-            node.kind,
-            "expr_forbidden_helper",
-            f"Node {node.id} expr uses forbidden helper(s): {sorted(hits)}",
-            field=field,
-            help="Inline logic in the expression or use a Script node; helpers are forbidden to keep flows self-contained.",
-        )
+    return
 
 
 def _parse_inputs(node_id: str, kind: StepKind, inputs: Mapping[str, Any]) -> List[str]:
@@ -771,6 +679,9 @@ def _validate_project(node: Node) -> None:
             "complete_calendar",
             "parse_date_multi",
             "date_range",
+            "date_range_to_start",
+            "date_year_only",
+            "group_cumcount",
             "format_number",
         }
         for op in ops:

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import keyword
 import re
-from datetime import datetime
 from typing import Any, Dict, Mapping, MutableMapping, Optional, Set
 
 import numpy as np
@@ -54,10 +53,6 @@ def safe_builtins(*, allow_imports: Optional[Set[str]] = None) -> Dict[str, Any]
         "NameError": NameError,
         "AssertionError": AssertionError,
     }
-
-
-_BACKTICK_COL_RE = re.compile(r"`([^`]+)`")
-
 
 def _is_safe_identifier(name: str) -> bool:
     if not name.isidentifier():
@@ -130,103 +125,6 @@ def _rewrite_backtick_columns(expr: str) -> str:
         i += 1
 
     return "".join(out)
-
-
-def _series_or_scalar_apply(value: Any, fn: Any) -> Any:
-    if isinstance(value, pd.Series):
-        return value.apply(fn)
-    return fn(value)
-
-
-def date_range_to_start(value: Any) -> Any:
-    """Normalize date ranges like '12-13 May, 1914' to '12 May, 1914'."""
-
-    def normalize_one(v: Any) -> Any:
-        if v is None or v is pd.NA:
-            return pd.NA
-        if isinstance(v, float) and pd.isna(v):
-            return pd.NA
-        s = str(v).strip()
-        m = re.match(
-            r"^(?P<d1>\d{1,2})\s*-\s*(?P<d2>\d{1,2})\s+(?P<mon>[A-Za-z]+)\s*,\s*(?P<y>\d{4})$", s)
-        if not m:
-            return s
-        d1 = int(m.group("d1"))
-        mon = m.group("mon")
-        y = int(m.group("y"))
-        return f"{d1} {mon}, {y:04d}"
-
-    return _series_or_scalar_apply(value, normalize_one)
-
-
-def date_year_only(value: Any) -> Any:
-    """Normalize year-only strings like '1914' or '1914 AD' to '01/01/1914'."""
-
-    def normalize_one(v: Any) -> Any:
-        if v is None or v is pd.NA:
-            return pd.NA
-        if isinstance(v, float) and pd.isna(v):
-            return pd.NA
-        s = str(v).strip()
-        m = re.fullmatch(r"(?P<y>\d{4})", s)
-        if m:
-            return f"01/01/{int(m.group('y')):04d}"
-        m = re.fullmatch(r"(?P<y>\d{1,4})\s*AD", s, flags=re.IGNORECASE)
-        if m:
-            return f"01/01/{int(m.group('y')):04d}"
-        return s
-
-    return _series_or_scalar_apply(value, normalize_one)
-
-
-def date_parse_multi(
-    value: Any,
-    formats: Optional[list[str]] = None,
-    out_fmt: str = "%d/%m/%Y",
-) -> Any:
-    """Parse dates using multiple formats; returns formatted strings by default."""
-    if formats is None:
-        formats = ["%d %B, %Y", "%B %d, %Y", "%d %B %Y",
-                   "%B %d %Y", "%d/%m/%Y", "%Y-%m-%d"]
-
-    def normalize_one(v: Any) -> Any:
-        if v is None or v is pd.NA:
-            return pd.NA
-        if isinstance(v, float) and pd.isna(v):
-            return pd.NA
-        s = str(v).strip()
-        s = date_year_only(date_range_to_start(s))
-        if s is pd.NA:
-            return pd.NA
-        for fmt in formats:
-            try:
-                dt = datetime.strptime(str(s), fmt)
-                return dt.strftime(out_fmt)
-            except Exception:
-                continue
-        # best-effort fallback
-        dt = pd.to_datetime(s, errors="coerce")
-        if pd.isna(dt):
-            return pd.NA
-        return pd.Timestamp(dt).strftime(out_fmt)
-
-    return _series_or_scalar_apply(value, normalize_one)
-
-
-def group_cumcount(df: pd.DataFrame, by: Any, start: int = 1, sort: bool = False) -> pd.Series:
-    """Group-wise cumcount with configurable start (default 1)."""
-    keys = by
-    if isinstance(by, str):
-        keys = [by]
-    if not isinstance(keys, list) or not keys or not all(isinstance(x, str) and x for x in keys):
-        raise ValueError(
-            "group_cumcount by must be non-empty string or list[str]")
-    if not isinstance(start, int):
-        raise ValueError("group_cumcount start must be int")
-    if not isinstance(sort, bool):
-        raise ValueError("group_cumcount sort must be bool")
-    return df.groupby(keys, sort=sort).cumcount() + start
-
 
 def expr_env(df: pd.DataFrame, extra: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
     builtins = safe_builtins()

@@ -472,6 +472,61 @@ def _apply_map(df: pd.DataFrame, series: pd.Series, op_name: str, args: Mapping[
             return out
 
         return series.apply(tokenize_one), None
+    if op_name == "date_range_to_start":
+        range_re = re.compile(
+            r"^(?P<d1>\d{1,2})\s*-\s*(?P<d2>\d{1,2})\s+(?P<mon>[A-Za-z]+)\s*,\s*(?P<y>\d{4})$"
+        )
+
+        def normalize_one(v: Any) -> Any:
+            if v is None or v is pd.NA:
+                return pd.NA
+            if isinstance(v, float) and pd.isna(v):
+                return pd.NA
+            text = str(v).strip()
+            m = range_re.match(text)
+            if not m:
+                return text
+            return f"{int(m.group('d1'))} {m.group('mon')}, {int(m.group('y')):04d}"
+
+        return series.apply(normalize_one), None
+    if op_name == "date_year_only":
+        year_re = re.compile(r"^(?P<y>\d{4})$")
+        year_ad_re = re.compile(r"^(?P<y>\d{1,4})\s*AD$", flags=re.IGNORECASE)
+
+        def normalize_one(v: Any) -> Any:
+            if v is None or v is pd.NA:
+                return pd.NA
+            if isinstance(v, float) and pd.isna(v):
+                return pd.NA
+            text = str(v).strip()
+            m = year_re.fullmatch(text)
+            if m:
+                return f"01/01/{int(m.group('y')):04d}"
+            m = year_ad_re.fullmatch(text)
+            if m:
+                return f"01/01/{int(m.group('y')):04d}"
+            return text
+
+        return series.apply(normalize_one), None
+    if op_name == "group_cumcount":
+        by = args.get("by")
+        start = args.get("start", 1)
+        sort = args.get("sort", False)
+        if isinstance(by, str):
+            by_cols = [by]
+        elif isinstance(by, list) and by and all(isinstance(x, str) and x for x in by):
+            by_cols = list(by)
+        else:
+            raise ValueError("group_cumcount args.by must be a non-empty string or list[str]")
+        if not isinstance(start, int):
+            raise ValueError("group_cumcount args.start must be int")
+        if not isinstance(sort, bool):
+            raise ValueError("group_cumcount args.sort must be bool")
+        missing = [c for c in by_cols if c not in df.columns]
+        if missing:
+            raise ValueError(f"group_cumcount args.by missing columns: {missing}")
+        out = df.groupby(by_cols, sort=sort).cumcount() + start
+        return out.astype("Int64"), None
     if op_name == "parse_date_multi":
         formats = args.get("formats")
         out_fmt = args.get("out_fmt", "%d/%m/%Y")

@@ -39,7 +39,6 @@ guidelines: |
   ## Expression Language
   - Evaluated with `eval` over: `df`, `pd`, `np`, `re`, `__row_pos`, and safe builtins (len, range, min, max, sum, any, all, sorted, ...).
   - Columns with safe identifiers can be referenced directly; otherwise use `df['Col']` or backticks: `` `Col` ``.
-  - Forbidden helper names in expressions: `date_range_to_start`, `date_year_only`, `date_parse_multi`, `group_cumcount`.
   - Predicate-style exprs must return bool or a boolean Series.
 
   ## Operator Specs (params are strict; unknown keys fail validation)
@@ -58,7 +57,7 @@ guidelines: |
   - `select` supports "*" expansion.
   - `compute`: [{as, expr}].
   - `cast`: [{col, dtype, errors}] where dtype in string|int64|float64|bool|datetime64[ns], errors in raise|null.
-  - `map` ops: trim, lower, upper, regex_replace, regex_extract, html_strip, squeeze_whitespace, split, tokenize, explode, fillna, map_values, complete_calendar, parse_date_multi, date_range, format_number.
+  - `map` ops: trim, lower, upper, regex_replace, regex_extract, html_strip, squeeze_whitespace, split, tokenize, explode, fillna, map_values, complete_calendar, parse_date_multi, date_range, date_range_to_start, date_year_only, group_cumcount, format_number.
     - `args.when` optional (not supported for explode/regex_extract/complete_calendar).
     - regex_replace: pattern, repl (default "").
     - fillna: value.
@@ -69,6 +68,9 @@ guidelines: |
     - complete_calendar: optional format, normalize (bool), freq (default "D").
     - parse_date_multi: optional formats list, out_fmt string, errors null|raise.
     - date_range: end_col or end, freq.
+    - date_range_to_start: normalize range text like "12-13 May, 1914" to "12 May, 1914".
+    - date_year_only: normalize "1914" / "1914 AD" to "01/01/1914".
+    - group_cumcount: by (string or list[string]), optional start (int, default 1), optional sort (bool, default false).
     - format_number: moving (bool).
     - regex_extract: pattern; optional group (int|str|list), as (string|list), dtype; errors null|raise; flags int or "IGNORECASE|MULTILINE|DOTALL" (aliases I/M/S).
   - `expand`: keys (list), from_col, expand_col, keep_from_col (bool, default true), and exactly one of to_col | to_value | to_value_expr (expression).
