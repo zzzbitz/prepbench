@@ -22,10 +22,7 @@ pip install -r requirements.txt
 
 - `config/experiment.yaml` holds experiment/runtime defaults (tracked).
 - `config/llm.yaml` holds provider/model routing defaults (tracked).
-- Optional local overrides (gitignored):
-  - `config/experiment.local.yaml`
-  - `config/llm.local.yaml`
-  - `config/settings.local.yaml` (global override)
+- Optional local override (gitignored): `config/config.local.yaml`
 - For the built-in OpenRouter provider, API keys must be set in `.env` (do not put keys in YAML).
 
 Important notes:

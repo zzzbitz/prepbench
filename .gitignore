@@ -52,9 +52,7 @@ htmlcov/
 *.log
 
 data_synthesis/output/
-config/settings.local.yaml
-config/experiment.local.yaml
-config/llm.local.yaml
+config/config.local.yaml
 tmp/
 
 @output/

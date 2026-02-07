@@ -14,8 +14,8 @@ Utilities for creating LLM clients from configuration, routing providers, and tr
 From `llm_connect`:
 
 - `create_llm_client_from_profile(model_name: str | None = None, agent: str | None = None) -> object | None`
-- `register_provider(provider_type: str, factory: Callable)`
-- `list_providers() -> list[str]`
+
+Provider registry helpers are available in `llm_connect.providers`.
 
 From `llm_connect.config` (used by other modules):
 

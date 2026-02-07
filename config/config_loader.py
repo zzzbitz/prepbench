@@ -11,9 +11,7 @@ import yaml
 ROOT_DIR = Path(__file__).resolve().parent.parent
 EXPERIMENT_SETTINGS_PATH = ROOT_DIR / "config" / "experiment.yaml"
 LLM_SETTINGS_PATH = ROOT_DIR / "config" / "llm.yaml"
-GLOBAL_LOCAL_SETTINGS_PATH = ROOT_DIR / "config" / "settings.local.yaml"
-EXPERIMENT_LOCAL_SETTINGS_PATH = ROOT_DIR / "config" / "experiment.local.yaml"
-LLM_LOCAL_SETTINGS_PATH = ROOT_DIR / "config" / "llm.local.yaml"
+LOCAL_OVERRIDE_PATH = ROOT_DIR / "config" / "config.local.yaml"
 ENV_PATH = ROOT_DIR / ".env"
 
 
@@ -90,9 +88,7 @@ def load_settings() -> Dict[str, Any]:
     Merge order:
     1) config/experiment.yaml
     2) config/llm.yaml
-    3) config/settings.local.yaml
-    4) config/experiment.local.yaml
-    5) config/llm.local.yaml
+    3) config/config.local.yaml
     """
     merged: Dict[str, Any] = {}
     for path in (EXPERIMENT_SETTINGS_PATH, LLM_SETTINGS_PATH):
@@ -100,9 +96,8 @@ def load_settings() -> Dict[str, Any]:
         if cfg:
             merged = _deep_merge(merged, cfg.copy())
 
-    for path in (GLOBAL_LOCAL_SETTINGS_PATH, EXPERIMENT_LOCAL_SETTINGS_PATH, LLM_LOCAL_SETTINGS_PATH):
-        local_cfg = _load_yaml(path)
-        if local_cfg:
-            merged = _deep_merge(merged, local_cfg.copy())
+    local_cfg = _load_yaml(LOCAL_OVERRIDE_PATH)
+    if local_cfg:
+        merged = _deep_merge(merged, local_cfg.copy())
 
     return merged
