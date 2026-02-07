@@ -4,7 +4,7 @@ Utilities for creating LLM clients from configuration, routing providers, and tr
 
 ## Scope
 
-- Build an LLM client based on `config/settings.yaml` + environment variables
+- Build an LLM client based on `config/settings.yaml` + `.env`
 - Support multiple providers via a registry and dynamic `provider_factory`
 - Provide a usage tracker that downstream clients can report into
 - Offer a concrete OpenRouter client with retry logic
@@ -26,11 +26,11 @@ From `llm_connect.config` (used by other modules):
 
 ## Provider Resolution
 
-1) Resolve active provider from config or env:
+1) Resolve active provider from config or `.env`:
    - `LLM_ACTIVE_PROVIDER` or `LLM_CLARIFIER_ACTIVE_PROVIDER`
 2) Resolve model:
    - `model_name` override
-   - `LLM_MODEL` / `LLM_CLARIFIER_MODEL`
+   - `.env`: `LLM_MODEL` / `LLM_CLARIFIER_MODEL`
    - provider `model` field
 3) Resolve provider implementation:
    - `provider_factory` (format `module:function`) if present
@@ -57,7 +57,7 @@ llm:
       x_title: "prepbench"
 ```
 
-API keys must be provided via `.env` or environment variables:
+API keys must be provided via `.env`:
 
 ```bash
 cat << 'EOF' > .env
@@ -75,7 +75,7 @@ llm:
       type: openai_compatible
       model: your-model-name
       base_url: https://<your-endpoint>/v1
-      # Optional; can also come from OPENAI_API_KEY/OPENROUTER_API_KEY
+      # Optional; can also come from .env OPENAI_API_KEY/OPENROUTER_API_KEY
       # api_key: your-api-key
 ```
 

@@ -22,7 +22,7 @@ pip install -r requirements.txt
 
 - `config/settings.yaml` holds shared defaults (tracked).
 - `config/settings.local.yaml` (optional, gitignored) can override non-secret settings.
-- For the built-in OpenRouter provider, API keys must be set via `.env` or environment variables (do not put keys in YAML).
+- For the built-in OpenRouter provider, API keys must be set in `.env` (do not put keys in YAML).
 
 Important notes:
 - YAML values are **not** environment-variable expanded. Do not use `${OPENROUTER_API_KEY}` inside YAML.
@@ -42,7 +42,7 @@ llm:
     openrouter:
       type: "openrouter"
       model: "openai/gpt-5.2"
-      # OpenRouter API keys are read from .env / environment variables only.
+      # OpenRouter API keys are read from .env only.
 ```
 
 `.env` (local, not committed):

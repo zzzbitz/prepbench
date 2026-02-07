@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import os
 from collections import OrderedDict
 from typing import Any, Iterable, Type, TypeVar
 
 from pydantic import BaseModel
+from config.config_loader import get_env_value
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -17,7 +17,7 @@ _CHOICE_GENERATOR_CACHE: OrderedDict[tuple[str, str | None, tuple[str, ...]], An
 
 
 def structured_outputs_enabled() -> bool:
-    return os.environ.get("ENABLE_OUTLINES", "0") == "1"
+    return get_env_value("ENABLE_OUTLINES", "0") == "1"
 
 
 def resolve_outlines_credentials(agent: str | None = None) -> tuple[str | None, str | None]:
@@ -37,11 +37,11 @@ def resolve_outlines_credentials(agent: str | None = None) -> tuple[str | None, 
             base_url = prof.get("base_url") or base_url
 
     env_api_key = (
-        os.environ.get("OUTLINES_API_KEY")
-        or os.environ.get("OPENAI_API_KEY")
-        or os.environ.get("OPENROUTER_API_KEY")
+        get_env_value("OUTLINES_API_KEY", "")
+        or get_env_value("OPENAI_API_KEY", "")
+        or get_env_value("OPENROUTER_API_KEY", "")
     )
-    env_base_url = os.environ.get("OUTLINES_BASE_URL") or os.environ.get("OPENAI_BASE_URL")
+    env_base_url = get_env_value("OUTLINES_BASE_URL", "") or get_env_value("OPENAI_BASE_URL", "")
 
     if not api_key:
         api_key = env_api_key

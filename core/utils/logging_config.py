@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import logging
-import os
 from typing import Optional
 
+from config.config_loader import get_env_value
 
 DEFAULT_FORMAT = "[%(levelname)s] %(asctime)s %(name)s - %(message)s"
 
@@ -11,10 +11,10 @@ DEFAULT_FORMAT = "[%(levelname)s] %(asctime)s %(name)s - %(message)s"
 def configure_logging(level: Optional[str] = None) -> None:
     """Configure root logging level and format.
 
-    Level can be provided explicitly or via LOG_LEVEL env var.
+    Level can be provided explicitly or via LOG_LEVEL in .env.
     """
 
-    env_level = os.getenv("LOG_LEVEL")
+    env_level = get_env_value("LOG_LEVEL", "")
     raw_level = level or env_level or "INFO"
 
     try:

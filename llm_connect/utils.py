@@ -15,7 +15,7 @@ def create_llm_client_from_profile(model_name: Optional[str] = None, agent: Opti
 
     Model resolution order:
     1) `model_name` override (if provided)
-    2) env var (`LLM_CLARIFIER_MODEL` or `LLM_MODEL`)
+    2) `.env` (`LLM_CLARIFIER_MODEL` or `LLM_MODEL`)
     3) provider config `model`
 
     Provider resolution:
@@ -32,7 +32,7 @@ def create_llm_client_from_profile(model_name: Optional[str] = None, agent: Opti
     if not final_model:
         raise RuntimeError(
             "Model name is not configured. "
-            "Set it via env (`LLM_MODEL` / `LLM_CLARIFIER_MODEL`) "
+            "Set it in .env (`LLM_MODEL` / `LLM_CLARIFIER_MODEL`) "
             "or `config/settings.yaml` under the active provider (`llm.providers.*.model` / `clarifier.model`)."
         )
 

@@ -28,10 +28,10 @@ llm:
   providers:
     openrouter:
       type: "openrouter"
-      model: "openai/gpt-5.2"
-      # API keys are read from .env / environment variables only.
+      model: "openrouter/pony-alpha"
+      # API keys are read from .env only.
 
 clarifier:
-  model: "deepseek/deepseek-v3.2"
+  model: "openrouter/pony-alpha"
   default_params:
     temperature: 0

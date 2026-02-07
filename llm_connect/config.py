@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import os
 import re
 from typing import Dict, Any, Optional, Tuple
 from functools import lru_cache
 
-from config.config_loader import load_env_file, load_settings
+from config.config_loader import get_env_value, load_env_file, load_settings
 
 @lru_cache(maxsize=1)
 def load_settings_config() -> Dict[str, Any]:
@@ -107,7 +106,7 @@ def get_active_profile(agent: Optional[str] = None) -> Optional[Tuple[str, Dict[
         env_key = "LLM_CLARIFIER_ACTIVE_PROVIDER"
     else:
         env_key = "LLM_ACTIVE_PROVIDER"
-    active = os.getenv(env_key, (sect or {}).get("active_provider"))
+    active = get_env_value(env_key, "").strip() or (sect or {}).get("active_provider")
     profiles = (sect or {}).get("providers", {})
 
     if not active or active not in profiles:
@@ -165,7 +164,7 @@ def get_model_name(override: Optional[str] = None, agent: Optional[str] = None) 
         env_var = "LLM_CLARIFIER_MODEL"
     else:
         env_var = "LLM_MODEL"
-    env_model = os.getenv(env_var)
+    env_model = get_env_value(env_var, "")
     if env_model and env_model.strip():
         return env_model.strip()
 
@@ -204,13 +203,13 @@ def validate_clarifier_settings() -> None:
         )
 
     clar_section = _get_effective_section_for_agent("clarifier")
-    active = os.getenv("LLM_CLARIFIER_ACTIVE_PROVIDER", (clar_section or {}).get("active_provider"))
+    active = get_env_value("LLM_CLARIFIER_ACTIVE_PROVIDER", "").strip() or (clar_section or {}).get("active_provider")
     providers = (clar_section or {}).get("providers", {}) or {}
     if not active or active not in providers:
         raise ValueError("Clarifier active_provider is not configured or not present in providers.")
 
-    # Model can be overridden by env; if not, validate config model type/value.
-    env_model = os.getenv("LLM_CLARIFIER_MODEL")
+    # Model can be overridden by .env; if not, validate config model type/value.
+    env_model = get_env_value("LLM_CLARIFIER_MODEL", "")
     if env_model and env_model.strip():
         return
 

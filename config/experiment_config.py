@@ -1,9 +1,8 @@
 
 from dataclasses import dataclass
-import os
 from typing import Optional
 
-from .config_loader import load_env_file, load_settings
+from .config_loader import get_env_value, load_env_file, load_settings
 
 
 @dataclass(frozen=True)
@@ -53,8 +52,8 @@ class ExperimentConfig:
 
     @classmethod
     def load_config(cls, *, model_name_override: Optional[str] = None) -> 'ExperimentConfig':
-        """Load configuration from YAML file with optional local overrides and env."""
-        # Ensure .env is loaded before reading config for env-backed defaults
+        """Load configuration from YAML with optional local overrides and .env."""
+        # Ensure .env is loaded before reading config for .env-backed defaults
         load_env_file()
 
         data = load_settings()
@@ -66,13 +65,13 @@ class ExperimentConfig:
         
         # Resolve model name:
         # 1) explicit override
-        # 2) env LLM_MODEL
+        # 2) .env LLM_MODEL
         # 3) provider config model (legacy)
         model_name = ""
         if model_name_override and str(model_name_override).strip():
             model_name = str(model_name_override).strip()
         else:
-            env_model = os.getenv("LLM_MODEL", "").strip()
+            env_model = get_env_value("LLM_MODEL", "").strip()
             if env_model:
                 model_name = env_model
             else:
@@ -87,7 +86,7 @@ class ExperimentConfig:
                     model_name = model_name.split(",")[0].strip()
 
         if not model_name:
-            raise ValueError("Model name not found. Provide --model or set LLM_MODEL.")
+            raise ValueError("Model name not found. Provide --model or set LLM_MODEL in .env.")
 
         run_mode = exp_data.get("run_mode", "orig")
         if isinstance(run_mode, list):

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import importlib
-import os
 from typing import Any, Callable, Dict, Optional
+
+from config.config_loader import get_env_value
 
 from .openrouter_client import OpenAICompatibleChatClient, OpenRouterLLMClient
 
@@ -60,7 +61,7 @@ def _resolve_api_key(profile: Dict[str, Any], *, env_keys: list[str]) -> str:
     if profile_key:
         return profile_key
     for env_key in env_keys:
-        value = os.getenv(env_key) or ""
+        value = get_env_value(env_key, "")
         if value.strip():
             return value.strip()
     return ""
@@ -71,7 +72,7 @@ def _resolve_base_url(profile: Dict[str, Any], *, default_url: str, env_keys: li
     if profile_url:
         return profile_url
     for env_key in env_keys:
-        value = os.getenv(env_key) or ""
+        value = get_env_value(env_key, "")
         if value.strip():
             return value.strip()
     return default_url

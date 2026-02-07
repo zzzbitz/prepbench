@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from typing import Optional, List
-import os
-from config.config_loader import load_env_file
+from config.config_loader import get_env_value, load_env_file
 
 load_env_file()
 
-API_KEY: str = os.getenv("OPENROUTER_API_KEY", "")
+API_KEY: str = get_env_value("OPENROUTER_API_KEY", "")
 HTTP_REFERER: Optional[str] = None
 X_TITLE: Optional[str] = None
 
