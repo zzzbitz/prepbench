@@ -49,38 +49,52 @@ def run_batch(results_root: Path) -> Path:
     if not gt_root.is_dir():
         raise FileNotFoundError(f"GT root not found: {gt_root}")
 
-    case_dirs = _discover_case_dirs(results_root)
-    if not case_dirs:
-        raise FileNotFoundError(f"No case_* directories found under: {results_root}")
+    gt_case_dirs = sorted(
+        [p for p in gt_root.glob("case_*") if p.is_dir()],
+        key=lambda p: p.name,
+    )
+    if not gt_case_dirs:
+        raise FileNotFoundError(f"No GT case_* directories found under: {gt_root}")
+
+    discovered_case_dirs = _discover_case_dirs(results_root)
+    case_dir_by_name: dict[str, Path] = {}
+    for case_dir in discovered_case_dirs:
+        case_dir_by_name.setdefault(case_dir.name, case_dir)
 
     output_csv = results_root / "evaluation_summary.csv"
+    acc_txt = results_root / "acc.txt"
     rows: list[dict[str, str]] = []
 
-    for case_dir in case_dirs:
-        case_name = case_dir.name
-        gt_case_dir = gt_root / case_name
-        cand_kind, cand_dir = _pick_candidate_dir(case_dir)
+    for gt_case_dir in gt_case_dirs:
+        case_name = gt_case_dir.name
+        case_dir = case_dir_by_name.get(case_name)
+        cand_kind = "none"
+        cand_dir: Optional[Path] = None
+        if case_dir is not None:
+            cand_kind, cand_dir = _pick_candidate_dir(case_dir)
 
         row = {
             "case_name": case_name,
             "evaluated": "false",
             "passed": "false",
-            "candidate_kind": cand_kind,
             "candidate_dir": str(cand_dir.resolve()) if cand_dir else "",
             "gt_dir": str(gt_case_dir.resolve()),
             "error_type": "",
             "error_message": "",
         }
 
-        if not gt_case_dir.is_dir():
-            row["error_type"] = "GT_CASE_MISSING"
-            row["error_message"] = f"GT case directory not found: {gt_case_dir}"
+        if case_dir is None:
+            row["error_type"] = "NOT_FOUND"
+            row["error_message"] = f"Result case directory not found: {results_root / case_name}"
             rows.append(row)
             continue
 
         if cand_dir is None:
-            row["error_type"] = "CANDIDATE_MISSING"
-            row["error_message"] = "No candidate directory with CSV outputs found (checked flow_cand then cand)."
+            row["error_type"] = "NOT_FOUND"
+            row["error_message"] = (
+                f"No candidate CSV outputs found under {case_dir / 'solution'} "
+                "(checked flow_cand then cand)."
+            )
             rows.append(row)
             continue
 
@@ -96,7 +110,6 @@ def run_batch(results_root: Path) -> Path:
         "case_name",
         "evaluated",
         "passed",
-        "candidate_kind",
         "candidate_dir",
         "gt_dir",
         "error_type",
@@ -110,7 +123,12 @@ def run_batch(results_root: Path) -> Path:
     total = len(rows)
     evaluated = sum(1 for r in rows if r["evaluated"] == "true")
     passed = sum(1 for r in rows if r["passed"] == "true")
-    print(f"[evaluate.batch] total={total} evaluated={evaluated} passed={passed} output={output_csv}")
+    accuracy = (passed / total) if total > 0 else 0.0
+    acc_txt.write_text(f"{accuracy:.6f}\n", encoding="utf-8")
+    print(
+        f"[evaluate.batch] total={total} evaluated={evaluated} passed={passed} "
+        f"accuracy={accuracy:.6f} output={output_csv} acc={acc_txt}"
+    )
     return output_csv
 
 

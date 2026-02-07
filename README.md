@@ -18,6 +18,12 @@ cd prepbench
 pip install -r requirements.txt
 ```
 
+## Prerequisites
+
+- Python 3.9+ (recommended)
+- Network access to your configured LLM provider endpoint
+- A valid API key in `.env`
+
 ## Configuration
 
 - `config/experiment.yaml` holds experiment/runtime defaults (tracked).
@@ -130,7 +136,15 @@ Or use shortcut scripts:
 - `interact`: raw query + clarify + profile + code
 - `disamb_only`: disambiguated/full query + code (no profile)
 - `e2e`: interact pipeline + code-to-flow
-- `flow`: flow-only execution (requires solution.py)
+- `flow`: flow-only execution (requires reference `case_XXX.py` files under `simulator/assets/solutions/`)
+
+### Reference Solutions for `flow` and User Simulator
+
+`flow` mode and user simulator alignment both rely on benchmark reference solution files:
+
+- Path: `simulator/assets/solutions/case_XXX.py`
+- Reason not bundled in the public repo: potential data leakage risk
+- Request access by email: `j1n9zhe@gmail.com`
 
 ## Usage
 
@@ -167,6 +181,32 @@ python run.py --case 52
 `e2e` can run directly. It automatically reuses existing `interact` artifacts when available, and
 `interact` can reuse artifacts prepared during a previous `e2e` run.
 
+## Recommended Workflow
+
+1) Dry-run with one case:
+
+```bash
+./scripts/run_orig.sh --case 1 --model openai/gpt-5.2
+```
+
+2) Run a full mode for all cases:
+
+```bash
+./scripts/run_orig.sh --model openai/gpt-5.2
+```
+
+3) Evaluate the completed run:
+
+```bash
+python -m evaluate.batch --results-root @output/<model_info>/orig
+```
+
+4) Inspect the summary CSV:
+
+```bash
+@output/<model_info>/orig/evaluation_summary.csv
+```
+
 ## Output
 
 Results are saved under `@output/<model_info>/<run_mode>/<case_name>/` by default.
@@ -177,3 +217,14 @@ Results are saved under `@output/<model_info>/<run_mode>/<case_name>/` by defaul
 └── solution/
     └── final_status.json
 ```
+
+## Troubleshooting
+
+- `API key not provided`:
+  - Ensure `.env` exists at repo root and contains a valid key (for example `OPENROUTER_API_KEY=...`).
+- `run_mode is empty`:
+  - Pass `--run_mode` explicitly or set `experiment.run_mode` in `config/experiment.yaml`.
+- `Reference solution not found` (usually in `flow` mode):
+  - Prepare `simulator/assets/solutions/case_XXX.py` first. For access, contact `j1n9zhe@gmail.com`.
+- `No candidate directory with CSV outputs found` during batch evaluation:
+  - The run did not produce result CSV files under `solution/cand` or `solution/flow_cand` for that case.

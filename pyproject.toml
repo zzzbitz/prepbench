@@ -3,7 +3,7 @@ requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ambiguity-tool"
+name = "prepbench"
 version = "0.0.0"
 description = "Ambiguity analysis and auto-ETL experiment runner"
 readme = "README.md"

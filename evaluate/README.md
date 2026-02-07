@@ -95,17 +95,19 @@ python -m evaluate.batch --results-root @output/<model>/<run_mode>
 
 Behavior:
 - GT is always loaded from `evaluate/gt/case_xxx`.
+- Every GT case is written to the summary CSV. Missing run outputs are marked as `NOT_FOUND`.
 - Candidate directory is auto-detected per case:
   - prefer `solution/flow_cand` when present with CSV files
   - otherwise use `solution/cand`
 - Output CSV is written to:
   - `<results_root>/evaluation_summary.csv`
+- Accuracy scalar is written to:
+  - `<results_root>/acc.txt`
 
 CSV columns:
 - `case_name`
 - `evaluated`
 - `passed`
-- `candidate_kind`
 - `candidate_dir`
 - `gt_dir`
 - `error_type`
