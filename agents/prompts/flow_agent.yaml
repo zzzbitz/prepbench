@@ -23,6 +23,7 @@ operator_definitions: |
   Params: path, mode, delimiter, encoding, na_values, keep_default_na, parse_dates, dtype, skiprows, header, on_bad_lines, quotechar, escapechar, data, source_type.
   - File input: requires `path`; `mode` is "csv" (default) or "line".
   - `mode="line"` returns a single string column `raw`.
+  - If `encoding` is a list, runtime tries encodings in order until one succeeds.
   - Inline input: set `source_type="inline"` (or provide `data`) with `data` as list[dict] or dict[str, list].
 
   ### project
@@ -35,6 +36,7 @@ operator_definitions: |
   - `cast`: [{col, dtype, errors}] where dtype in string|int64|float64|bool|datetime64[ns], errors in raise|null.
   - `map` ops: trim, lower, upper, regex_replace, regex_extract, html_strip, squeeze_whitespace, split, tokenize, explode, fillna, map_values, complete_calendar, parse_date_multi, date_range, date_range_to_start, date_year_only, group_cumcount, format_number.
     - `args.when` optional (not supported for explode/regex_extract/complete_calendar).
+    - `args.as` creates/overwrites a target column for scalar map ops; `regex_extract` has its own `as` behavior, while `explode` and `complete_calendar` are table-level transforms.
     - regex_replace: pattern, repl (default "").
     - fillna: value.
     - map_values: mapping, optional default.
@@ -58,8 +60,10 @@ operator_definitions: |
   ### join
   Params: how, on or left_on/right_on, null_equal, suffixes, select_left, select_right, validate, fuzzy_match.
   - how: inner|left|right|full|semi|anti (default inner).
+  - `semi`/`anti` return filtered rows from the left table only; `select_left/select_right` do not apply in these modes.
   - fuzzy_match: boolean; only supports single key and how in {left, inner}.
   - validate: {mode: 1:1|1:m|m:1|m:m, on_fail: error|tag, error_col}.
+  - For `validate.on_fail=tag`, `error_col` defaults to `_join_error` when omitted.
 
   ### union
   Params: distinct (required bool), align ("by_name" only), fill_missing (null|error), type_coerce ("error" only).
@@ -75,6 +79,7 @@ operator_definitions: |
 
   ### sort
   Params: order_by (required list of {expr, asc, nulls}), stable (bool, default true), limit (non-negative int), partition_by (list), limit_per_group (non-negative int).
+  - `partition_by` has effect only when `limit_per_group` is also set.
 
   ### pivot
   Params: mode required.
@@ -85,6 +90,7 @@ operator_definitions: |
 
   ### output
   Params: path (required), write_order (bool), schema_enforce (bool), schema (columns/order/dtype), datetime_format (map), encoding, lineterminator.
+  - `write_order` is accepted for compatibility but currently has no execution effect.
 
   ### script (last resort)
   Keep inline_code short (target <=1500 chars). Script count is not enforced but should be minimal.

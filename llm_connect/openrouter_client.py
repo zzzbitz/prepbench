@@ -6,7 +6,6 @@ import json
 import time
 import random
 import logging
-import math
 import threading
 import weakref
 from typing import List, Dict, Optional
@@ -101,57 +100,6 @@ class OpenAICompatibleChatClient:
         jitter = self.retry_cfg["jitter"]
         delay = base * (1 + random.uniform(-jitter, jitter))
         return min(delay, self.retry_cfg["max_delay"])
-
-    def _record_usage(self, result: Dict) -> None:
-        """Record token usage from API response if tracker is active."""
-        from llm_connect.usage_tracker import get_tracker
-        
-        tracker = get_tracker()
-        if tracker is None:
-            return
-        
-        usage = result.get("usage") or {}
-        if not usage:
-            # No usage data returned - still record the call
-            tracker.record_unknown()
-            return
-
-        def _to_int(value: object) -> int:
-            try:
-                if value is None:
-                    return 0
-                if isinstance(value, bool):
-                    return int(value)
-                if isinstance(value, int):
-                    return value
-                if isinstance(value, float):
-                    if math.isnan(value) or math.isinf(value):
-                        return 0
-                    return int(value)
-                if isinstance(value, str):
-                    raw = value.strip()
-                    if not raw:
-                        return 0
-                    return int(float(raw))
-                return int(value)
-            except Exception:
-                return 0
-
-        # Handle various field names used by different providers
-        prompt = usage.get("prompt_tokens") or usage.get("input_tokens") or 0
-        completion = usage.get("completion_tokens") or usage.get("output_tokens") or 0
-
-        prompt_val = _to_int(prompt)
-        completion_val = _to_int(completion)
-
-        # Fallback: if only total is available, split roughly
-        if prompt_val == 0 and completion_val == 0:
-            total = _to_int(usage.get("total_tokens"))
-            if total > 0:
-                prompt_val = total // 2
-                completion_val = total - prompt_val
-
-        tracker.record(prompt_val, completion_val)
 
     def generate(
         self,
@@ -260,9 +208,6 @@ class OpenAICompatibleChatClient:
                         f"Model: {self.model_name}\n"
                         f"Finish Reason: {finish_reason}"
                     )
-
-                # Record token usage if tracker is active
-                self._record_usage(result)
 
                 return content
 

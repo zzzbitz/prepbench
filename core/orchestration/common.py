@@ -31,6 +31,8 @@ def resolve_query_path(
 
 
 def copy_solution_artifacts(final_solution_src: Path, final_solution_dst: Path) -> None:
+    final_solution_dst.mkdir(parents=True, exist_ok=True)
+
     code_src = final_solution_src / "code.py"
     if code_src.exists():
         shutil.copy2(code_src, final_solution_dst / "solution.py")

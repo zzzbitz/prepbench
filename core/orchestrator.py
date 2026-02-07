@@ -340,21 +340,14 @@ class Orchestrator:
                 expected_sub_questions = list(sub_questions)
 
                 # Call user simulator (with one retry on format/alignment mismatch)
-                # Disable tracker for user simulator calls (only count ClarifyAgent, not oracle)
-                from llm_connect.usage_tracker import get_tracker, set_tracker
-                saved_tracker = get_tracker()
-                set_tracker(None)
-                try:
-                    clar = user_simulator.answer(
-                        query_full_text=query_full_text,
-                        amb_kb_json=amb_kb_json,
-                        solution_text=solution_text,
-                        question=action_content_truncated,
-                        expected_sub_questions=expected_sub_questions,
-                        runtime_feedback="",
-                    )
-                finally:
-                    set_tracker(saved_tracker)
+                clar = user_simulator.answer(
+                    query_full_text=query_full_text,
+                    amb_kb_json=amb_kb_json,
+                    solution_text=solution_text,
+                    question=action_content_truncated,
+                    expected_sub_questions=expected_sub_questions,
+                    runtime_feedback="",
+                )
                 (round_dir / "user_simulator_messages.json").write_text(
                     json.dumps(clar.messages, ensure_ascii=False, indent=2),
                     encoding="utf-8",
@@ -427,23 +420,17 @@ class Orchestrator:
                         encoding="utf-8",
                     )
                     # Retry once with explicit feedback injected into the prompt.
-                    # Disable tracker for user simulator retry (only count ClarifyAgent)
-                    saved_tracker_retry = get_tracker()
-                    set_tracker(None)
-                    try:
-                        clar_retry = user_simulator.answer(
-                            query_full_text=query_full_text,
-                            amb_kb_json=amb_kb_json,
-                            solution_text=solution_text,
-                            question=action_content_truncated,
-                            expected_sub_questions=expected_sub_questions,
-                            runtime_feedback=(
-                                "Your previous response did not satisfy the Output Contract. "
-                                f"Error={align_err}. Regenerate JSON with answers exactly matching Expected Sub-Questions."
-                            ),
-                        )
-                    finally:
-                        set_tracker(saved_tracker_retry)
+                    clar_retry = user_simulator.answer(
+                        query_full_text=query_full_text,
+                        amb_kb_json=amb_kb_json,
+                        solution_text=solution_text,
+                        question=action_content_truncated,
+                        expected_sub_questions=expected_sub_questions,
+                        runtime_feedback=(
+                            "Your previous response did not satisfy the Output Contract. "
+                            f"Error={align_err}. Regenerate JSON with answers exactly matching Expected Sub-Questions."
+                        ),
+                    )
                     (round_dir / "user_simulator_retry_raw.txt").write_text(clar_retry.raw_response or "", encoding="utf-8")
                     clar = clar_retry
                     clar_answer_dicts = [_to_answer_dict(a) for a in (clar.answers or [])]
@@ -750,7 +737,6 @@ class Orchestrator:
         profile_error: Optional[str] = None
         profile_cfg = dataclasses.replace(config, run_mode="interact")
         profile_output_root = interact_output_root
-        profile_usage_root = interact_output_root
         cached_summary, cached_profile_root = self._find_profile_cache(tdir, profile_cfg)
         if cached_summary is None:
             profile_result = self._run_profile_phase(
@@ -773,10 +759,8 @@ class Orchestrator:
                 else:
                     cached_summary = ""
                 cached_profile_root = interact_output_root
-            profile_usage_root = interact_output_root
         else:
             if cached_profile_root is not None:
-                profile_usage_root = cached_profile_root
                 if cached_profile_root != interact_output_root:
                     self._materialize_reused_profile_summary(
                         target_root=interact_output_root,
@@ -784,45 +768,6 @@ class Orchestrator:
                         source_root=cached_profile_root,
                     )
         profile_summary = cached_summary
-
-        def _zero_usage() -> dict:
-            return {
-                "prompt_tokens": 0,
-                "completion_tokens": 0,
-                "total_tokens": 0,
-                "call_count": 0,
-                "cost_usd": 0.0,
-            }
-
-        def _normalize_usage(section: Optional[dict]) -> dict:
-            data = _zero_usage()
-            if isinstance(section, dict):
-                data["prompt_tokens"] = int(section.get("prompt_tokens") or 0)
-                data["completion_tokens"] = int(section.get("completion_tokens") or 0)
-                data["total_tokens"] = int(section.get("total_tokens") or 0)
-                data["call_count"] = int(section.get("call_count") or 0)
-                data["cost_usd"] = float(section.get("cost_usd") or 0.0)
-            if data["total_tokens"] == 0:
-                data["total_tokens"] = data["prompt_tokens"] + data["completion_tokens"]
-            return data
-
-        def _read_token_section(token_path: Path, section: str) -> dict:
-            token_data = self._read_json_if_exists(token_path)
-            if isinstance(token_data, dict):
-                return _normalize_usage(token_data.get(section))
-            return _normalize_usage(None)
-
-        def _sum_usage(sections: list[dict]) -> dict:
-            total = _zero_usage()
-            for section in sections:
-                total["prompt_tokens"] += int(section.get("prompt_tokens") or 0)
-                total["completion_tokens"] += int(section.get("completion_tokens") or 0)
-                total["total_tokens"] += int(section.get("total_tokens") or 0)
-                total["call_count"] += int(section.get("call_count") or 0)
-                total["cost_usd"] += float(section.get("cost_usd") or 0.0)
-            if total["total_tokens"] == 0:
-                total["total_tokens"] = total["prompt_tokens"] + total["completion_tokens"]
-            return total
 
         def _copy_flow_artifacts(flow_solution_dir: Path, final_solution_dir: Path) -> None:
             import shutil
@@ -853,199 +798,156 @@ class Orchestrator:
             if flow_status_src.exists():
                 shutil.copy2(flow_status_src, final_solution_dir / "flow_final_status.json")
 
-        # Initialize usage tracker (code + flow for e2e)
-        from llm_connect.usage_tracker import UsageTracker, set_tracker
+        # ========== Code Phase ==========
+        code_output_root = interact_output_root
+        code_session_state = {
+            "task_dir": str(tdir),
+            "input_dir": str(ctx["input_dir"]),
+            "model_name": config.model_name,
+            "run_mode": config.run_mode,
+            "output_root": str(code_output_root),
+            "query": ctx["query_text"],
+            "qa_history": qa_history or [],
+        }
+        code_session_state["profile_summary"] = profile_summary
 
-        prompt_price, completion_price = 0.0, 0.0
-        tracker = UsageTracker(
-            model=config.model_name,
-            prompt_price=prompt_price,
-            completion_price=completion_price,
+        # Check if code phase already completed (cand directory exists with outputs)
+        cand_dir = code_output_root / "solution" / "cand"
+        code_already_done = cand_dir.exists() and any(cand_dir.iterdir())
+        skip_code_phase = False
+
+        if code_already_done:
+            # Code phase completed previously - skip to flow phase
+            code_result = {"passed": False, "rounds": 0, "history": []}
+            skip_code_phase = True
+        else:
+            code_result = self._run_code_phase(
+                tdir=tdir,
+                config=config,
+                session_state=code_session_state,
+                output_root=code_output_root,
+            )
+
+        # code_exec_ok: code ran without errors and produced candidate outputs
+        code_exec_ok = code_already_done or (
+            (code_output_root / "solution" / "cand").exists()
+            and any((code_output_root / "solution" / "cand").iterdir())
         )
-        set_tracker(tracker)
+        code_passed = bool(code_result.get("passed", False))
+        code_reason = str(code_result.get("stopped_reason") or "")
+        final_solution_dir = ctx["output_root"] / "solution"
 
-        try:
-            # ========== Code Phase ==========
-            tracker.set_phase("code")
-            code_output_root = interact_output_root
-            code_session_state = {
-                "task_dir": str(tdir),
-                "input_dir": str(ctx["input_dir"]),
-                "model_name": config.model_name,
-                "run_mode": config.run_mode,
-                "output_root": str(code_output_root),
-                "query": ctx["query_text"],
-                "qa_history": qa_history or [],
-            }
-            code_session_state["profile_summary"] = profile_summary
+        # Keep e2e output synchronized with interact code artifacts.
+        code_solution_dir = code_output_root / "solution"
+        if code_output_root != ctx["output_root"] and code_solution_dir.exists():
+            copy_solution_artifacts(code_solution_dir, final_solution_dir)
 
-            # Check if code phase already completed (cand directory exists with outputs)
-            cand_dir = code_output_root / "solution" / "cand"
-            code_already_done = cand_dir.exists() and any(cand_dir.iterdir())
-            skip_code_phase = False
-            
-            if code_already_done:
-                # Code phase completed previously - skip to flow phase
-                code_result = {"passed": False, "rounds": 0, "history": []}
-                skip_code_phase = True
+        flow_result: Optional[Dict[str, Any]] = None
+        flow_passed = not with_flow
+        flow_ran = False
+        flow_reason = "skipped_flow_disabled" if not with_flow else "skipped_code_failed"
+        flow_output_root = ctx["output_root"] / "flow"
+        flow_solution_dir = flow_output_root / "solution"
+
+        # Run flow if code executed successfully (cand exists).
+        if with_flow and code_exec_ok:
+            solution_path = code_output_root / "solution" / "solution.py"
+            solution_text = ""
+            if solution_path.exists():
+                solution_text = solution_path.read_text(encoding="utf-8")
             else:
-                code_result = self._run_code_phase(
+                hist = code_result.get("history") or []
+                if hist and isinstance(hist[-1], dict):
+                    last_solution = hist[-1].get("solution") or {}
+                    if isinstance(last_solution, dict):
+                        solution_text = last_solution.get("code") or ""
+
+            if solution_text.strip():
+                flow_result = self._run_flow_impl(
                     tdir=tdir,
                     config=config,
-                    session_state=code_session_state,
-                    output_root=code_output_root,
+                    output_root=flow_output_root,
+                    solution_text=solution_text,
                 )
-            
-            # code_exec_ok: code ran without errors and produced candidate outputs
-            code_exec_ok = code_already_done or (
-                (code_output_root / "solution" / "cand").exists() and 
-                any((code_output_root / "solution" / "cand").iterdir())
-            )
-            code_passed = bool(code_result.get("passed", False))
-            code_reason = str(code_result.get("stopped_reason") or "")
-            final_solution_dir = ctx["output_root"] / "solution"
+                flow_ran = True
+                flow_passed = bool(flow_result.get("passed", False))
+                flow_reason = flow_result.get("stopped_reason", "unknown")
+                _copy_flow_artifacts(flow_solution_dir, ctx["output_root"] / "solution")
+            else:
+                flow_reason = "solution_missing"
 
-            # Keep e2e output synchronized with interact code artifacts.
-            code_solution_dir = code_output_root / "solution"
-            if code_output_root != ctx["output_root"] and code_solution_dir.exists():
-                copy_solution_artifacts(code_solution_dir, final_solution_dir)
-            
-            flow_result: Optional[Dict[str, Any]] = None
-            flow_passed = not with_flow
-            flow_ran = False
-            flow_reason = "skipped_flow_disabled" if not with_flow else "skipped_code_failed"
-            flow_output_root = ctx["output_root"] / "flow"
-            flow_solution_dir = flow_output_root / "solution"
+        # Update final status with code/flow outcomes
+        code_status_path = code_output_root / "solution" / "final_status.json"
+        code_final_status = self._read_json_if_exists(code_status_path)
+        if not isinstance(code_final_status, dict):
+            code_final_status = {}
 
-            # Run flow if code executed successfully (cand exists).
-            if with_flow and code_exec_ok:
-                solution_path = code_output_root / "solution" / "solution.py"
-                solution_text = ""
-                if solution_path.exists():
-                    solution_text = solution_path.read_text(encoding="utf-8")
-                else:
-                    hist = code_result.get("history") or []
-                    if hist and isinstance(hist[-1], dict):
-                        last_solution = hist[-1].get("solution") or {}
-                        if isinstance(last_solution, dict):
-                            solution_text = last_solution.get("code") or ""
+        flow_final_status = self._read_json_if_exists(flow_solution_dir / "final_status.json")
+        if not isinstance(flow_final_status, dict):
+            flow_final_status = {}
 
-                if solution_text.strip():
-                    tracker.set_phase("flow")
-                    flow_result = self._run_flow_impl(
-                        tdir=tdir,
-                        config=config,
-                        output_root=flow_output_root,
-                        solution_text=solution_text,
-                    )
-                    flow_ran = True
-                    flow_passed = bool(flow_result.get("passed", False))
-                    flow_reason = flow_result.get("stopped_reason", "unknown")
-                    _copy_flow_artifacts(flow_solution_dir, ctx["output_root"] / "solution")
-                else:
-                    flow_reason = "solution_missing"
+        code_ok = bool(code_final_status.get("ok", False))
+        code_rc = int(code_final_status.get("rc", 1))
+        flow_ok = bool(flow_final_status.get("ok", False)) if flow_ran else False
+        flow_rc = int(flow_final_status.get("rc", 1))
 
-            # Update final status with code/flow outcomes
-            code_status_path = code_output_root / "solution" / "final_status.json"
-            code_final_status = self._read_json_if_exists(code_status_path)
-            if not isinstance(code_final_status, dict):
-                code_final_status = {}
-
-            flow_final_status = self._read_json_if_exists(flow_solution_dir / "final_status.json")
-            if not isinstance(flow_final_status, dict):
-                flow_final_status = {}
-
-            code_ok = bool(code_final_status.get("ok", False))
-            code_rc = int(code_final_status.get("rc", 1))
-            flow_ok = bool(flow_final_status.get("ok", False)) if flow_ran else False
-            flow_rc = int(flow_final_status.get("rc", 1))
-
-            # Preserve code_passed/code_reason from existing status when skipping code phase
-            if skip_code_phase:
-                code_passed = bool(
-                    code_final_status.get(
-                        "code_passed",
-                        code_final_status.get("passed", code_passed),
-                    )
+        # Preserve code_passed/code_reason from existing status when skipping code phase
+        if skip_code_phase:
+            code_passed = bool(
+                code_final_status.get(
+                    "code_passed",
+                    code_final_status.get("passed", code_passed),
                 )
-                code_reason = str(code_final_status.get("code_reason") or code_final_status.get("reason") or code_reason)
-            
-            overall_passed = code_passed and (flow_passed if with_flow else True)
-            if overall_passed:
-                overall_reason = "passed"
-            elif not code_passed:
-                overall_reason = "code_failed"
-            elif with_flow:
-                overall_reason = "flow_failed"
-            else:
-                overall_reason = "passed"
-
-            if not skip_code_phase:
-                code_reason = str(code_final_status.get("reason") or code_reason)
-            final_status = {
-                "ok": bool(code_ok and (flow_ok if flow_ran else True)),
-                "rc": flow_rc if flow_ran else code_rc,
-                "passed": overall_passed,
-                "reason": overall_reason,
-                "rounds_used": code_final_status.get("rounds_used", code_result.get("rounds", 0)),
-                "message": code_final_status.get("message", ""),
-                "code_passed": code_passed,
-                "code_reason": code_reason or code_result.get("stopped_reason"),
-                "flow_passed": bool(flow_passed) if with_flow else False,
-                "flow_reason": str(flow_final_status.get("reason", flow_reason)),
-                "gui_passed": bool(flow_passed) if with_flow else False,
-                "gui_reason": str(flow_final_status.get("reason", flow_reason)),
-            }
-            final_solution_dir.mkdir(parents=True, exist_ok=True)
-            (final_solution_dir / "final_status.json").write_text(
-                json.dumps(final_status, ensure_ascii=False, indent=2), encoding="utf-8"
             )
-            # Merge token usage: clarify/profile from cache, code from existing or tracker, flow from tracker
-            clarify_usage = _read_token_section(interact_output_root / "token_usage.json", "clarify")
-            profile_usage = _read_token_section(profile_usage_root / "token_usage.json", "profile")
-            tracker_data = tracker.to_dict()
-            
-            # If code phase was skipped, read code usage from existing token_usage.json
-            if skip_code_phase:
-                code_usage = _read_token_section(code_output_root / "token_usage.json", "code")
-            else:
-                code_usage = _normalize_usage(tracker_data.get("code"))
-            
-            flow_usage = _normalize_usage(tracker_data.get("flow"))
-            total_usage = _sum_usage([clarify_usage, profile_usage, code_usage, flow_usage])
+            code_reason = str(code_final_status.get("code_reason") or code_final_status.get("reason") or code_reason)
 
-            token_payload = {
-                "model": config.model_name,
-                "clarify": clarify_usage,
-                "profile": profile_usage,
-                "code": code_usage,
-                "flow": flow_usage,
-                "total": total_usage,
-            }
-            if tracker.unknown_usage_calls > 0:
-                token_payload["unknown_usage_calls"] = tracker.unknown_usage_calls
-            (ctx["output_root"] / "token_usage.json").write_text(
-                json.dumps(token_payload, ensure_ascii=False, indent=2), encoding="utf-8"
-            )
+        overall_passed = code_passed and (flow_passed if with_flow else True)
+        if overall_passed:
+            overall_reason = "passed"
+        elif not code_passed:
+            overall_reason = "code_failed"
+        elif with_flow:
+            overall_reason = "flow_failed"
+        else:
+            overall_reason = "passed"
 
-            return {
-                "passed": overall_passed,
-                "code_passed": code_passed,
-                "flow_passed": bool(flow_passed) if with_flow else False,
-                "flow_ran": flow_ran,
-                "flow_reason": final_status.get("flow_reason"),
-                "clarify_rounds": clarify_rounds,
-                "code_rounds": code_result.get("rounds", 0),
-                "flow_rounds": flow_result.get("rounds", 0) if isinstance(flow_result, dict) else 0,
-                "clarify_history": clarify_history,
-                "code_history": code_result.get("history", []),
-                "flow_history": flow_result.get("history", []) if isinstance(flow_result, dict) else [],
-                "qa_history": qa_history or [],
-                "profile_error": profile_error,
-                "stopped_reason": final_status.get("reason", "unknown"),
-            }
-        finally:
-            set_tracker(None)
+        if not skip_code_phase:
+            code_reason = str(code_final_status.get("reason") or code_reason)
+        final_status = {
+            "ok": bool(code_ok and (flow_ok if flow_ran else True)),
+            "rc": flow_rc if flow_ran else code_rc,
+            "passed": overall_passed,
+            "reason": overall_reason,
+            "rounds_used": code_final_status.get("rounds_used", code_result.get("rounds", 0)),
+            "message": code_final_status.get("message", ""),
+            "code_passed": code_passed,
+            "code_reason": code_reason or code_result.get("stopped_reason"),
+            "flow_passed": bool(flow_passed) if with_flow else False,
+            "flow_reason": str(flow_final_status.get("reason", flow_reason)),
+            "gui_passed": bool(flow_passed) if with_flow else False,
+            "gui_reason": str(flow_final_status.get("reason", flow_reason)),
+        }
+        final_solution_dir.mkdir(parents=True, exist_ok=True)
+        (final_solution_dir / "final_status.json").write_text(
+            json.dumps(final_status, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+
+        return {
+            "passed": overall_passed,
+            "code_passed": code_passed,
+            "flow_passed": bool(flow_passed) if with_flow else False,
+            "flow_ran": flow_ran,
+            "flow_reason": final_status.get("flow_reason"),
+            "clarify_rounds": clarify_rounds,
+            "code_rounds": code_result.get("rounds", 0),
+            "flow_rounds": flow_result.get("rounds", 0) if isinstance(flow_result, dict) else 0,
+            "clarify_history": clarify_history,
+            "code_history": code_result.get("history", []),
+            "flow_history": flow_result.get("history", []) if isinstance(flow_result, dict) else [],
+            "qa_history": qa_history or [],
+            "profile_error": profile_error,
+            "stopped_reason": final_status.get("reason", "unknown"),
+        }
 
     def _run_code_phase(
         self,
@@ -1226,97 +1128,55 @@ class Orchestrator:
             raise FileNotFoundError(f"Query file not found: {query_md_path} (run_mode={config.run_mode})")
         query_text = query_md_path.read_text(encoding="utf-8")
 
-        # Initialize usage tracker
-        from llm_connect.usage_tracker import UsageTracker, set_tracker
-        
-        prompt_price, completion_price = 0.0, 0.0
-        tracker = UsageTracker(
-            model=config.model_name,
-            prompt_price=prompt_price,
-            completion_price=completion_price,
-        )
-        set_tracker(tracker)
-        
-        try:
-            # ========== Profile Phase ==========
-            profile_summary = ""
-            profile_error = None
-            reuse_profile = False
-            prev_profile_usage: Optional[dict] = None
-            cached_summary, cached_profile_root = self._find_profile_cache(tdir, config)
-            if cached_summary is not None:
-                profile_summary = cached_summary
-                reuse_profile = True
-                usage_root = cached_profile_root or output_root
-                prev_usage = self._read_json_if_exists(usage_root / "token_usage.json")
-                if isinstance(prev_usage, dict):
-                    prev_profile_usage = prev_usage.get("profile")
-                if usage_root != output_root:
-                    self._materialize_reused_profile_summary(
-                        target_root=output_root,
-                        summary=cached_summary,
-                        source_root=usage_root,
-                    )
-
-            if not reuse_profile:
-                tracker.set_phase("profile")
-                profile_result = self._run_profile_phase(
-                    tdir=tdir,
-                    config=config,
-                    output_root=output_root,
-                    query_text=query_text,
-                    input_dir=input_dir,
-                    inputs=inputs,
-                    inputs_preview=inputs_preview,
+        # ========== Profile Phase ==========
+        profile_summary = ""
+        profile_error = None
+        reuse_profile = False
+        cached_summary, cached_profile_root = self._find_profile_cache(tdir, config)
+        if cached_summary is not None:
+            profile_summary = cached_summary
+            reuse_profile = True
+            usage_root = cached_profile_root or output_root
+            if usage_root != output_root:
+                self._materialize_reused_profile_summary(
+                    target_root=output_root,
+                    summary=cached_summary,
+                    source_root=usage_root,
                 )
-                profile_summary = profile_result.get("summary", "")
-                profile_error = profile_result.get("error")
 
-            # ========== Code Phase ==========
-            tracker.set_phase("code")
-            session_state = {
-                "task_dir": str(tdir),
-                "input_dir": str(input_dir),
-                "model_name": config.model_name,
-                "run_mode": config.run_mode,
-                "output_root": str(output_root),
-                "query": query_text,
-                "profile_summary": profile_summary,
-            }
-
-            result = self._run_code_phase(
+        if not reuse_profile:
+            profile_result = self._run_profile_phase(
                 tdir=tdir,
                 config=config,
-                session_state=session_state,
                 output_root=output_root,
+                query_text=query_text,
+                input_dir=input_dir,
+                inputs=inputs,
+                inputs_preview=inputs_preview,
             )
-            result["profile_summary"] = profile_summary
-            result["profile_error"] = profile_error
-            return result
-        finally:
-            tracker.save(output_root / "token_usage.json")
-            if 'reuse_profile' in locals() and reuse_profile and prev_profile_usage:
-                usage_path = output_root / "token_usage.json"
-                usage = self._read_json_if_exists(usage_path)
-                if isinstance(usage, dict):
-                    usage["profile"] = prev_profile_usage
-                    total = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "call_count": 0, "cost_usd": 0.0}
-                    for key, section in usage.items():
-                        if key in {"model", "total", "timestamp", "unknown_usage_calls"}:
-                            continue
-                        if not isinstance(section, dict):
-                            continue
-                        total["prompt_tokens"] += int(section.get("prompt_tokens") or 0)
-                        total["completion_tokens"] += int(section.get("completion_tokens") or 0)
-                        total["total_tokens"] += int(section.get("total_tokens") or 0)
-                        total["call_count"] += int(section.get("call_count") or 0)
-                        total["cost_usd"] += float(section.get("cost_usd") or 0.0)
-                    total["cost_usd"] = round(total["cost_usd"], 6)
-                    usage["total"] = total
-                    usage_path.write_text(
-                        json.dumps(usage, ensure_ascii=False, indent=2), encoding="utf-8"
-                    )
-            set_tracker(None)
+            profile_summary = profile_result.get("summary", "")
+            profile_error = profile_result.get("error")
+
+        # ========== Code Phase ==========
+        session_state = {
+            "task_dir": str(tdir),
+            "input_dir": str(input_dir),
+            "model_name": config.model_name,
+            "run_mode": config.run_mode,
+            "output_root": str(output_root),
+            "query": query_text,
+            "profile_summary": profile_summary,
+        }
+
+        result = self._run_code_phase(
+            tdir=tdir,
+            config=config,
+            session_state=session_state,
+            output_root=output_root,
+        )
+        result["profile_summary"] = profile_summary
+        result["profile_error"] = profile_error
+        return result
 
     def _run_flow_impl(
         self,
@@ -1345,29 +1205,12 @@ class Orchestrator:
         solution_path = require_reference_solution_path(tdir)
         solution_text = solution_path.read_text(encoding="utf-8")
         output_root = get_output_path(tdir, config)
-
-        # Initialize usage tracker
-        from llm_connect.usage_tracker import UsageTracker, set_tracker
-
-        prompt_price, completion_price = 0.0, 0.0
-        tracker = UsageTracker(
-            model=config.model_name,
-            prompt_price=prompt_price,
-            completion_price=completion_price,
+        return self._run_flow_impl(
+            tdir=tdir,
+            config=config,
+            output_root=output_root,
+            solution_text=solution_text,
         )
-        set_tracker(tracker)
-        tracker.set_phase("flow")
-
-        try:
-            return self._run_flow_impl(
-                tdir=tdir,
-                config=config,
-                output_root=output_root,
-                solution_text=solution_text,
-            )
-        finally:
-            tracker.save(output_root / "token_usage.json")
-            set_tracker(None)
 
     def _run_code_only(self, tdir: Path, config: ExperimentConfig) -> Dict[str, Any]:
         """Run code generation only (no clarify/profile/flow)."""
@@ -1385,29 +1228,20 @@ class Orchestrator:
             "query": query_md_path.read_text(encoding="utf-8"),
         }
 
-        from llm_connect.usage_tracker import UsageTracker, set_tracker
-
-        tracker = UsageTracker(model=config.model_name, prompt_price=0.0, completion_price=0.0)
-        set_tracker(tracker)
-        try:
-            tracker.set_phase("code")
-            result = self._run_code_phase(
-                tdir=tdir,
-                config=config,
-                session_state=session_state,
-                output_root=output_root,
-            )
-            last_eval = {"passed": False}
-            hist = result.get("history", [])
-            if hist:
-                last_round = hist[-1]
-                if last_round.get("solution"):
-                    last_eval = last_round["solution"].get("eval_summary", {"passed": False})
-            result["last_eval"] = last_eval
-            return result
-        finally:
-            tracker.save(output_root / "token_usage.json")
-            set_tracker(None)
+        result = self._run_code_phase(
+            tdir=tdir,
+            config=config,
+            session_state=session_state,
+            output_root=output_root,
+        )
+        last_eval = {"passed": False}
+        hist = result.get("history", [])
+        if hist:
+            last_round = hist[-1]
+            if last_round.get("solution"):
+                last_eval = last_round["solution"].get("eval_summary", {"passed": False})
+        result["last_eval"] = last_eval
+        return result
 
     def run(
         self,

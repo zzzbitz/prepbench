@@ -1,12 +1,11 @@
 # llm_connect
 
-Utilities for creating LLM clients from configuration, routing providers, and tracking token usage.
+Utilities for creating LLM clients from configuration and routing providers.
 
 ## Scope
 
 - Build an LLM client based on `config/llm.yaml` (plus `config/experiment.yaml` for run defaults) + `.env`
 - Support multiple providers via a registry and dynamic `provider_factory`
-- Provide a usage tracker that downstream clients can report into
 - Offer a concrete OpenRouter client with retry logic
 
 ## Public API
@@ -103,22 +102,11 @@ Returned object must implement:
 generate(messages, temperature, max_tokens, timeout) -> str
 ```
 
-## Usage Tracking
-
-`llm_connect.usage_tracker` provides a context-aware tracker:
-
-- `set_tracker(tracker)` / `get_tracker()`
-- `UsageTracker.record(prompt_tokens, completion_tokens)` / `record_unknown()`
-
-If a provider wants to report usage, it can call `get_tracker()` and record tokens.
-`OpenRouterLLMClient` already does this.
-
 ## OpenRouter Client
 
 `llm_connect.openrouter_client.OpenAICompatibleChatClient` implements:
 
 - Retry with exponential backoff for transient HTTP failures
-- Optional usage tracking via `usage_tracker`
 
 `OpenRouterLLMClient` is kept as a compatibility wrapper over the same implementation.
 
