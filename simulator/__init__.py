@@ -1,5 +1,5 @@
 """Benchmark-provided simulator components."""
 
-from .user_simulator import UserSimulator, ClarifierAgent
+from .user_simulator import UserSimulator
 
-__all__ = ["UserSimulator", "ClarifierAgent"]
+__all__ = ["UserSimulator"]

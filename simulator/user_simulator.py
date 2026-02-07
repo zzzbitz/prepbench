@@ -469,7 +469,3 @@ class UserSimulator:
             parse_error=None,
             raw_attempts=[raw or ""],
         )
-
-
-# Backward-compatible alias for previous class name.
-ClarifierAgent = UserSimulator

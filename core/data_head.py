@@ -64,9 +64,5 @@ class DataHead:
                 profile[p.name] = {"error": str(e)}
         return profile
 
-    def get_profile(self, input_dir: str | Path) -> Dict[str, Any]:
-        # Backward-compatible alias.
-        return self.get_preview(input_dir)
-
     def _read_schema_and_head(self, csv_path: Path, nrows: int = 5) -> SchemaHead:
         return read_schema_and_head(csv_path, nrows=nrows)

@@ -258,13 +258,6 @@ class Orchestrator:
                 runtime_feedback = None
                 break
 
-            # Handle Code: action (backward compatibility) - treat as done and proceed to code
-            if action.action_type == "code":
-                clarify_hist.append({"round": r, "action": "code_early", "note": "ClarifyAgent output Code, treating as Done"})
-                clarify_stopped_reason = "code_early"
-                runtime_feedback = None
-                break
-
             # Handle Ask: action
             if action.action_type == "ask":
                 runtime_feedback = None  # Clear previous feedback on valid action
@@ -724,8 +717,6 @@ class Orchestrator:
                             rec["parse_error"] = invalid.get("parse_error")
                         if not rec.get("parse_error"):
                             rec["parse_error"] = action.get("parse_error")
-                    elif action_type == "code":
-                        rec["action"] = "code_early"
                     clarify_history.append(rec)
 
             if not rounds:

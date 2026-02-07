@@ -60,30 +60,12 @@ _CANONICAL_MODE_SPECS: Dict[str, ModeSpec] = {
     ),
 }
 
-# Legacy names are kept for backward compatibility in internal call paths.
-_LEGACY_MODE_ALIASES: Dict[str, str] = {
-    "raw": "orig",
-    "full": "disamb_only",
-    "profile": "disamb",
-    "raw_profile": "orig",
-    "cleanspec": "disamb_only",
-}
-
-
 def get_mode_spec(run_mode: str) -> ModeSpec:
     mode = (run_mode or "").strip().lower()
     if mode in _CANONICAL_MODE_SPECS:
         return _CANONICAL_MODE_SPECS[mode]
-    canonical = _LEGACY_MODE_ALIASES.get(mode)
-    if canonical and canonical in _CANONICAL_MODE_SPECS:
-        return _CANONICAL_MODE_SPECS[canonical]
-    # Default to the most conservative behavior for unknown values.
-    return ModeSpec(
-        name=mode or "unknown",
-        query_source="query",
-        allow_profile=False,
-        allow_clarify=False,
-        allow_flow=False,
+    raise ValueError(
+        f"Unsupported run_mode '{run_mode}'. Allowed: {sorted(_CANONICAL_MODE_SPECS.keys())}"
     )
 
 
