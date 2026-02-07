@@ -39,10 +39,6 @@ def _pick_candidate_dir(case_dir: Path) -> tuple[str, Optional[Path]]:
     return "none", None
 
 
-def _to_csv_bool(v: bool) -> str:
-    return "true" if v else "false"
-
-
 def run_batch(results_root: Path) -> Path:
     repo_root = _resolve_repo_root()
     gt_root = repo_root / "evaluate" / "gt"
@@ -75,8 +71,8 @@ def run_batch(results_root: Path) -> Path:
 
         row = {
             "case_name": case_name,
-            "evaluated": "false",
-            "passed": "false",
+            "execution": "fail",
+            "evaluation": "false",
             "candidate_dir": str(cand_dir.resolve()) if cand_dir else "",
             "gt_dir": str(gt_case_dir.resolve()),
             "error_type": "",
@@ -99,8 +95,8 @@ def run_batch(results_root: Path) -> Path:
             continue
 
         passed, first_error = evaluate(str(gt_case_dir), str(cand_dir))
-        row["evaluated"] = "true"
-        row["passed"] = _to_csv_bool(bool(passed))
+        row["execution"] = "success"
+        row["evaluation"] = "correct" if bool(passed) else "false"
         if not passed and isinstance(first_error, dict):
             row["error_type"] = str(first_error.get("error_type") or "UNKNOWN")
             row["error_message"] = str(first_error.get("message") or "")
@@ -108,8 +104,8 @@ def run_batch(results_root: Path) -> Path:
 
     fieldnames = [
         "case_name",
-        "evaluated",
-        "passed",
+        "execution",
+        "evaluation",
         "candidate_dir",
         "gt_dir",
         "error_type",
@@ -121,12 +117,12 @@ def run_batch(results_root: Path) -> Path:
         writer.writerows(rows)
 
     total = len(rows)
-    evaluated = sum(1 for r in rows if r["evaluated"] == "true")
-    passed = sum(1 for r in rows if r["passed"] == "true")
-    accuracy = (passed / total) if total > 0 else 0.0
+    success_count = sum(1 for r in rows if r["execution"] == "success")
+    correct_count = sum(1 for r in rows if r["evaluation"] == "correct")
+    accuracy = (correct_count / total) if total > 0 else 0.0
     acc_txt.write_text(f"{accuracy:.6f}\n", encoding="utf-8")
     print(
-        f"[evaluate.batch] total={total} evaluated={evaluated} passed={passed} "
+        f"[evaluate.batch] total={total} success={success_count} correct={correct_count} "
         f"accuracy={accuracy:.6f} output={output_csv} acc={acc_txt}"
     )
     return output_csv

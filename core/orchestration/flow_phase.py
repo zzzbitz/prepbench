@@ -11,6 +11,17 @@ from config.experiment_config import ExperimentConfig
 from core.orchestration.common import copy_solution_artifacts, summarize_eval
 
 
+def _validate_script_constraints_optional(flow_dict: dict) -> tuple[bool, str, dict]:
+    """Validate script constraints when the optional validator module is available."""
+    try:
+        from py2flow.flow_constraints import validate_script_constraints  # type: ignore
+    except Exception:
+        # Older/lightweight py2flow builds may not include flow_constraints.
+        # In that case, rely on DAG parsing + executor validation.
+        return True, "", {}
+    return validate_script_constraints(flow_dict)
+
+
 def run_flow_impl(
     *,
     tdir: Path,
@@ -85,9 +96,32 @@ def run_flow_impl(
             json.dumps(protocol, ensure_ascii=False, indent=2), encoding="utf-8"
         )
 
-        flow_dict, raw_response, messages, parse_error = flow_agent.generate_flow(
-            session_state, feedback=feedback
-        )
+        try:
+            flow_dict, raw_response, messages, parse_error = flow_agent.generate_flow(
+                session_state, feedback=feedback
+            )
+        except Exception as e:
+            stopped_reason = "execerror"
+            exec_info = {
+                "ok": False,
+                "rc": 1,
+                "stderr": f"Flow generation exception: {e}",
+                "stdout": "",
+                "took_sec": 0,
+            }
+            eval_report = {
+                "passed": False,
+                "errors": [{"error_type": "flowgen_exception", "message": str(e)}],
+                "diff_summary": {},
+            }
+            (round_dir / "flow_generation_exception.json").write_text(
+                json.dumps({"type": "generation_exception", "message": str(e)}, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            _write_solution_artifacts(solution_dir, exec_info, eval_report)
+            feedback = {"type": "generation_exception", "message": str(e), "details": {}}
+            hist.append({"round": round_num, "passed": False, "stopped_reason": stopped_reason})
+            continue
         (round_dir / "messages.json").write_text(
             json.dumps(messages, ensure_ascii=False, indent=2), encoding="utf-8"
         )
@@ -128,9 +162,8 @@ def run_flow_impl(
 
         try:
             dag = DAG.from_dict(flow_dict)
-            from py2flow.flow_constraints import validate_script_constraints
 
-            is_valid, constraint_err, err_details = validate_script_constraints(flow_dict)
+            is_valid, constraint_err, err_details = _validate_script_constraints_optional(flow_dict)
             if not is_valid:
                 stopped_reason = "execerror"
                 exec_info = {"ok": False, "rc": 1, "stderr": constraint_err, "stdout": "", "took_sec": 0}

@@ -106,8 +106,8 @@ Behavior:
 
 CSV columns:
 - `case_name`
-- `evaluated`
-- `passed`
+- `execution` (`success` | `fail`)
+- `evaluation` (`correct` | `false`)
 - `candidate_dir`
 - `gt_dir`
 - `error_type`
