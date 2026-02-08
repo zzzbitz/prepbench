@@ -338,7 +338,6 @@ def main():
     parser.add_argument("--model", type=str, help="Model name (comma-separated). Defaults to config.")
 
     parser.add_argument("--subset", action="store_true", help="Only run cases that are multiples of 15 (e.g., 015, 030, 045...)")
-    parser.add_argument("--yes", action="store_true", help="Skip confirmation prompt and run immediately.")
     parser.add_argument("--list", type=int, default=0, help="List first N tasks after skip filter and exit.")
     # log-level and dry-run removed for simplicity
     
@@ -523,34 +522,25 @@ def main():
         f"(Cases={len(all_cases)}, RunModes={len(run_modes)}, Models={distinct_models})"
     )
 
-    if not args.yes:
-        print("\n== Confirm Run ==")
-        print(f"RunModes: {run_modes}")
-        print(f"Models: {distinct_models}")
-        print(f"Cases: {len(all_cases)} (selector={args.case or 'ALL'})")
-        print(f"Tasks: {len(tasks)} (cases x models x modes)")
-        if skipped_tasks:
-            print(f"SkippedAlready: {skipped_tasks}")
-        print(f"Parallel: {bool(base_config.parallel_execution)} Jobs={jobs}")
-        print(f"Timeout: {base_config.timeout}s")
-        print(f"OutputTemplate: {base_config.output_root_template}")
-        print(f"MaxRounds: debug={base_config.max_rounds_debug} interact={base_config.max_rounds_interact}")
-        if any(m in ("interact", "e2e") for m in run_modes):
-            print(
-                "Clarify: question_ratio="
-                f"{base_config.question_ratio} max_questions_cap={base_config.max_questions_cap} "
-                f"max_questions_per_ask={base_config.max_questions_per_ask}"
-            )
-        if any(m in ("orig", "disamb", "interact", "e2e") for m in run_modes):
-            print(f"Profile: max_rounds={base_config.profile.max_rounds}")
-
-        try:
-            resp = input("Proceed? [y/N]: ").strip().lower()
-        except EOFError:
-            resp = ""
-        if resp not in {"y", "yes"}:
-            print("Aborted by user.")
-            sys.exit(0)
+    print("\n== Run Plan ==")
+    print(f"RunModes: {run_modes}")
+    print(f"Models: {distinct_models}")
+    print(f"Cases: {len(all_cases)} (selector={args.case or 'ALL'})")
+    print(f"Tasks: {len(tasks)} (cases x models x modes)")
+    if skipped_tasks:
+        print(f"SkippedAlready: {skipped_tasks}")
+    print(f"Parallel: {bool(base_config.parallel_execution)} Jobs={jobs}")
+    print(f"Timeout: {base_config.timeout}s")
+    print(f"OutputTemplate: {base_config.output_root_template}")
+    print(f"MaxRounds: debug={base_config.max_rounds_debug} interact={base_config.max_rounds_interact}")
+    if any(m in ("interact", "e2e") for m in run_modes):
+        print(
+            "Clarify: question_ratio="
+            f"{base_config.question_ratio} max_questions_cap={base_config.max_questions_cap} "
+            f"max_questions_per_ask={base_config.max_questions_per_ask}"
+        )
+    if any(m in ("orig", "disamb", "interact", "e2e") for m in run_modes):
+        print(f"Profile: max_rounds={base_config.profile.max_rounds}")
 
     use_thread_pool = any(cfg.run_mode == "e2e" for _, cfg in tasks)
 
