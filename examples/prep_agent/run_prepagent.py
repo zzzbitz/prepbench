@@ -448,6 +448,9 @@ class PrepAgentRunner:
     def run_case(self, case_dir: Path) -> Dict[str, Any]:
         case_view = load_internal_case_view(case_dir, require_reference_solution=True)
         output_root = get_output_path(case_dir, self.config)
+        # Always reset per-case output to avoid reusing stale artifacts (especially flow_cand).
+        if output_root.exists():
+            shutil.rmtree(output_root)
         output_root.mkdir(parents=True, exist_ok=True)
 
         inputs_preview = DataHead().get_preview(case_view.input_dir)
