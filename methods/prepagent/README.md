@@ -34,7 +34,7 @@ Outputs follow the standard evaluation layout under `@output/<model_info>/prepag
 ## Evaluate
 
 ```bash
-python -m evaluate.batch --results-root @output/<model_info>/prepagent --candidate-kind auto
+PYTHONPATH=src python -m evaluate.batch --results-root @output/<model_info>/prepagent --candidate-kind auto
 ```
 
 ## Notes

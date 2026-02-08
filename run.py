@@ -6,8 +6,13 @@ import concurrent.futures
 from typing import Iterable, List, Optional, TypeVar
 from tqdm import tqdm
 
-# Add project root to path
-sys.path.append(str(Path(__file__).parent))
+# Add source roots to path (src for code packages, repo root for config/)
+REPO_ROOT = Path(__file__).resolve().parent
+SRC_ROOT = REPO_ROOT / "src"
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from config.experiment_config import ExperimentConfig
 from core.orchestrator import Orchestrator

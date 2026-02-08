@@ -78,7 +78,7 @@ For most users, PrepBench should be used as an **E2E benchmark/evaluator**.
 3) Evaluate outputs:
 
 ```bash
-python -m evaluate.batch --results-root @output/<model_info>/e2e --candidate-kind auto
+PYTHONPATH=src python -m evaluate.batch --results-root @output/<model_info>/e2e --candidate-kind auto
 ```
 
 4) Read results:

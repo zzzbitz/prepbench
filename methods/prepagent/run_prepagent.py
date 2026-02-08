@@ -17,8 +17,11 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 EXAMPLE_DIR = Path(__file__).resolve().parent
 PREP_PROMPT_DIR = EXAMPLE_DIR / "prompts"
 PREP_TEMPLATE_DIR = PREP_PROMPT_DIR / "templates"
+SRC_ROOT = REPO_ROOT / "src"
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
 if str(REPO_ROOT) not in sys.path:
-    sys.path.append(str(REPO_ROOT))
+    sys.path.insert(0, str(REPO_ROOT))
 
 from agents.clarify_agent import ClarifyAgent
 from agents.code_agent import CodeAgent

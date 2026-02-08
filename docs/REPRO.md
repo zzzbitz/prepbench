@@ -69,7 +69,7 @@ python run.py --case 52
 Evaluate one run root:
 
 ```bash
-python -m evaluate.batch --results-root @output/<model_info>/<run_mode>
+PYTHONPATH=src python -m evaluate.batch --results-root @output/<model_info>/<run_mode>
 ```
 
 Generated:

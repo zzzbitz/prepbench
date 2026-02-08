@@ -53,6 +53,7 @@ htmlcov/
 *.log
 
 data_synthesis/output/
+src/data_synthesis/output/
 config/config.local.yaml
 tmp/
 
@@ -61,8 +62,12 @@ tmp/
 
 @output.zip
 draw/output/
+src/draw/output/
+src/draw/draw/
 
 # Benchmark reference solutions (gtcode) are kept local only.
 data/case_*/solution.py
 simulator/assets/solutions/*
 !simulator/assets/solutions/.gitkeep
+src/simulator/assets/solutions/*
+!src/simulator/assets/solutions/.gitkeep

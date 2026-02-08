@@ -20,7 +20,7 @@ A framework can submit either:
 3) Run evaluator:
 
 ```bash
-python -m evaluate.batch --results-root @output/<your_framework>/e2e --candidate-kind auto
+PYTHONPATH=src python -m evaluate.batch --results-root @output/<your_framework>/e2e --candidate-kind auto
 ```
 
 ## Reference Implementation
@@ -37,7 +37,7 @@ PrepAgent writes to an isolated root:
 And can be evaluated with:
 
 ```bash
-python -m evaluate.batch --results-root @output/<model_info>/prepagent --candidate-kind auto
+PYTHONPATH=src python -m evaluate.batch --results-root @output/<model_info>/prepagent --candidate-kind auto
 ```
 
 Source:
@@ -124,9 +124,9 @@ Rules:
 Run local batch evaluation:
 
 ```bash
-python -m evaluate.batch --results-root @output/my_framework/e2e --candidate-kind auto
-python -m evaluate.batch --results-root @output/my_framework/e2e --candidate-kind code
-python -m evaluate.batch --results-root @output/my_framework/e2e --candidate-kind flow
+PYTHONPATH=src python -m evaluate.batch --results-root @output/my_framework/e2e --candidate-kind auto
+PYTHONPATH=src python -m evaluate.batch --results-root @output/my_framework/e2e --candidate-kind code
+PYTHONPATH=src python -m evaluate.batch --results-root @output/my_framework/e2e --candidate-kind flow
 ```
 
 Generated files:
