@@ -62,58 +62,56 @@ llm:
 OPENROUTER_API_KEY="your-key"
 ```
 
-## Fast Run Path (Keep It Simple)
+## Quick Start for Evaluating Your Agent (Primary Path)
 
-If you only care about "how to run":
+For most users, PrepBench should be used as an **E2E benchmark/evaluator**.
 
 1) Set API key in `.env`.
-2) Pick one mode script and run:
+2) Run the reference `PrepAgent` on one case:
 
 ```bash
-./scripts/run_orig.sh --case 1
-# or:
-./scripts/run_disamb.sh --case 1
-./scripts/run_interact.sh --case 1
-./scripts/run_disamb_only.sh --case 1
-./scripts/run_flow.sh --case 1
-./scripts/run_e2e.sh --case 1
+./scripts/run_prepagent.sh --case 1 --model openai/gpt-5.2
 ```
 
-3) Check run result:
+3) Evaluate outputs:
 
 ```bash
-cat @output/<model_info>/<run_mode>/case_001/solution/final_status.json
+python -m evaluate.batch --results-root @output/<model_info>/e2e --candidate-kind auto
 ```
 
-4) Evaluate a full run root:
+4) Read results:
 
 ```bash
-python -m evaluate.batch --results-root @output/<model_info>/<run_mode>
+@output/<model_info>/e2e/evaluation_summary.csv
+@output/<model_info>/e2e/acc.txt
 ```
 
-The evaluation summary CSV will be written to:
+What third-party frameworks need to produce:
+- code track: `case_xxx/solution/cand/*.csv`
+- flow track: `case_xxx/solution/flow_cand/*.csv`
 
-```bash
-@output/<model_info>/<run_mode>/evaluation_summary.csv
-```
+Public per-case inputs:
+- `data/case_xxx/query.md`
+- `data/case_xxx/inputs/*.csv`
 
-## Quickstart (1 minute)
+Integration contract:
+- `docs/BYOA_E2E.md`
 
-1) Create `.env` at the repo root:
+Reference implementation:
+- `examples/prep_agent/run_prepagent.py`
+- `examples/prep_agent/README.md`
 
-```bash
-cat << 'EOF' > .env
-OPENROUTER_API_KEY=your-key
-EOF
-```
+## Reproduce Paper Experiments (Secondary Path)
 
-2) Run a single case:
+`run.py` is the experiment reproducer for internal multi-mode runs.
+
+Run one case:
 
 ```bash
 python run.py --case 1 --run_mode orig --model openai/gpt-5.2
 ```
 
-Or use shortcut scripts:
+Mode scripts:
 
 ```bash
 ./scripts/run_orig.sh --case 1 --model openai/gpt-5.2
@@ -124,127 +122,43 @@ Or use shortcut scripts:
 ./scripts/run_e2e.sh --case 1 --model openai/gpt-5.2
 ```
 
-3) Check outputs:
-
-- Outputs are written under `@output/<model_info>/<run_mode>/<case_name>/` by default.
-- Success is indicated by `@output/<model_info>/<run_mode>/<case_name>/solution/final_status.json`.
-
-## Run Modes (`run_mode`)
-
+Run modes:
 - `orig`: raw query + profile + code
 - `disamb`: disambiguated/full query + profile + code
 - `interact`: raw query + clarify + profile + code
 - `disamb_only`: disambiguated/full query + code (no profile)
 - `e2e`: interact pipeline + code-to-flow
-- `flow`: flow-only execution (requires reference `case_XXX.py` files under `simulator/assets/solutions/`)
+- `flow`: flow-only execution (requires `simulator/assets/solutions/case_XXX.py`)
 
-## BYOA (Third-Party Agent Frameworks)
+Notes:
+- `e2e` can run directly and reuses compatible interact artifacts when available.
+- If `experiment.run_mode` and default model are set in config, you can omit CLI `--run_mode` and `--model`.
 
-For external frameworks, we recommend a single benchmark setting: **E2E**.
+## Output Layout
 
-You can submit either:
-- **code track**: write CSV outputs to `case_xxx/solution/cand/`
-- **flow track**: write CSV outputs to `case_xxx/solution/flow_cand/`
-
-Public per-case inputs for participants:
-- `data/case_xxx/query.md`
-- `data/case_xxx/inputs/*.csv`
-
-Local benchmark-side components:
-- User simulator local API: `simulator.LocalUserSimulatorAPI`
-- Flow machine-readable contract: `py2flow/flow.schema.json`
-
-Then evaluate with:
+Results are written under:
 
 ```bash
-python -m evaluate.batch --results-root @output/<your_framework>/e2e --candidate-kind auto
-# or force one track:
-python -m evaluate.batch --results-root @output/<your_framework>/e2e --candidate-kind code
-python -m evaluate.batch --results-root @output/<your_framework>/e2e --candidate-kind flow
-```
-
-Full integration contract:
-- `docs/BYOA_E2E.md`
-
-### Reference Solutions for `flow` and User Simulator
-
-`flow` mode and user simulator alignment both rely on benchmark reference solution files:
-
-- Path: `simulator/assets/solutions/case_XXX.py`
-- Reason not bundled in the public repo: potential data leakage risk
-- Request access by email: `j1n9zhe@gmail.com`
-
-## Usage
-
-### Run a single case
-
-```bash
-python run.py --case 52 --run_mode disamb --model openai/gpt-5.2
-```
-
-### Run a range of cases
-
-```bash
-python run.py --case 5-8 --run_mode orig --model openai/gpt-5.2
-```
-
-### Run all cases
-
-```bash
-python run.py --run_mode orig --model openai/gpt-5.2
-```
-
-### Use defaults from settings
-
-If you set `experiment.run_mode` in `config/experiment.yaml` and `llm.providers.<provider>.model`
-in `config/llm.yaml`, you can omit
-`--run_mode` and `--model`:
-
-```bash
-python run.py --case 52
-```
-
-### Notes on e2e
-
-`e2e` can run directly. It automatically reuses existing `interact` artifacts when available, and
-`interact` can reuse artifacts prepared during a previous `e2e` run.
-
-## Recommended Workflow
-
-1) Dry-run with one case:
-
-```bash
-./scripts/run_orig.sh --case 1 --model openai/gpt-5.2
-```
-
-2) Run a full mode for all cases:
-
-```bash
-./scripts/run_orig.sh --model openai/gpt-5.2
-```
-
-3) Evaluate the completed run:
-
-```bash
-python -m evaluate.batch --results-root @output/<model_info>/orig
-```
-
-4) Inspect the summary CSV:
-
-```bash
-@output/<model_info>/orig/evaluation_summary.csv
-```
-
-## Output
-
-Results are saved under `@output/<model_info>/<run_mode>/<case_name>/` by default.
-
-```
 @output/<model_info>/<run_mode>/<case_name>/
-├── rounds/             # per-round logs
-└── solution/
-    └── final_status.json
 ```
+
+Typical structure:
+
+```text
+@output/<model_info>/<run_mode>/<case_name>/
+├── rounds/
+└── solution/
+    ├── final_status.json
+    ├── cand/        # code track outputs
+    └── flow_cand/   # flow track outputs
+```
+
+### Reference Solutions for Flow/User Simulator
+
+Flow mode and user simulator alignment require benchmark reference solutions:
+- Path: `simulator/assets/solutions/case_XXX.py`
+- Not bundled publicly to reduce data leakage risk
+- Request access: `j1n9zhe@gmail.com`
 
 ## Troubleshooting
 

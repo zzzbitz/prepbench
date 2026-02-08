@@ -7,6 +7,34 @@ A framework can submit either:
 - **code track** outputs (`solution/cand/*.csv`), or
 - **flow track** outputs (`solution/flow_cand/*.csv`).
 
+## Minimal 3-Step Checklist
+
+1) Read public inputs only:
+- `data/case_xxx/query.md`
+- `data/case_xxx/inputs/*.csv`
+
+2) Write outputs under:
+- `@output/<your_framework>/e2e/case_xxx/solution/cand/*.csv`
+- or `@output/<your_framework>/e2e/case_xxx/solution/flow_cand/*.csv`
+
+3) Run evaluator:
+
+```bash
+python -m evaluate.batch --results-root @output/<your_framework>/e2e --candidate-kind auto
+```
+
+## Reference Implementation
+
+PrepBench provides a reference `PrepAgent` pipeline for E2E:
+
+```bash
+./scripts/run_prepagent.sh --case 1 --model openai/gpt-5.2
+```
+
+Source:
+- `examples/prep_agent/run_prepagent.py`
+- `examples/prep_agent/README.md`
+
 ## 1) Public Inputs Per Case
 
 Only these public inputs are required by participants:
