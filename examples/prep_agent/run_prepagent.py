@@ -22,9 +22,9 @@ from config.experiment_config import ExperimentConfig
 from core.case_views import load_internal_case_view
 from core.data_head import DataHead
 from core.orchestration.clarify_parse import parse_sub_questions
+from core.orchestration.code_phase import run_code_phase
 from core.orchestration.flow_phase import run_flow_impl
 from core.orchestration.profile_phase import run_profile_phase
-from core.orchestrator import Orchestrator
 from core.utils import list_input_files
 from core.utils.logging_config import configure_logging, get_logger
 from core.utils.paths import get_output_path
@@ -180,10 +180,6 @@ class PrepAgentRunner:
     def __init__(self, config: ExperimentConfig) -> None:
         self.config = config
         self.logger = get_logger("prep_agent")
-        self.orchestrator = Orchestrator(
-            parallel_execution=config.parallel_execution,
-            max_workers=config.jobs,
-        )
 
     def _run_profile_stage(
         self,
@@ -483,7 +479,7 @@ class PrepAgentRunner:
             "qa_history": clarify_result.get("qa_history", []),
             "profile_summary": profile_summary,
         }
-        code_result = self.orchestrator._run_code_phase(  # noqa: SLF001
+        code_result = run_code_phase(
             tdir=case_dir,
             config=self.config,
             session_state=code_session_state,

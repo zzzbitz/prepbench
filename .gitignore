@@ -23,6 +23,7 @@ ENV/
 # Env/config
 .env
 .env.*
+!.env.example
 .envrc
 
 # Test / coverage / cache

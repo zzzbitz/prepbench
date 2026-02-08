@@ -59,7 +59,9 @@ llm:
 `.env` (local, not committed):
 
 ```bash
-OPENROUTER_API_KEY="your-key"
+cp .env.example .env
+# then edit .env:
+OPENROUTER_API_KEY=your-key
 ```
 
 ## Quick Start for Evaluating Your Agent (Primary Path)
