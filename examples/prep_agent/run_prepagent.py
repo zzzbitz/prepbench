@@ -14,10 +14,16 @@ from uuid import uuid4
 from tqdm import tqdm
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+EXAMPLE_DIR = Path(__file__).resolve().parent
+PREP_PROMPT_DIR = EXAMPLE_DIR / "prompts"
+PREP_TEMPLATE_DIR = PREP_PROMPT_DIR / "templates"
 if str(REPO_ROOT) not in sys.path:
     sys.path.append(str(REPO_ROOT))
 
 from agents.clarify_agent import ClarifyAgent
+from agents.code_agent import CodeAgent
+from agents.flow_agent import FlowAgent
+from agents.profile_agent import ProfileAgent
 from config.experiment_config import ExperimentConfig
 from core.case_views import load_internal_case_view
 from core.data_head import DataHead
@@ -31,6 +37,17 @@ from core.utils.paths import get_output_path
 from simulator.local_api import LocalUserSimulatorAPI
 
 T = TypeVar("T")
+
+
+def get_prepagent_output_path(case_path: Path, config: ExperimentConfig) -> Path:
+    """PrepAgent has its own output namespace to avoid mixing with benchmark e2e runs."""
+    base = get_output_path(case_path, config)
+    case_name = case_path.name
+    mode_name = str(config.run_mode or "").strip() or "e2e"
+    # Replace trailing /<mode>/<case_name> with /prepagent/<case_name>.
+    if base.name == case_name and base.parent.name == mode_name:
+        return base.parent.parent / "prepagent" / case_name
+    return base.parent / "prepagent" / case_name
 
 
 def dedupe_preserve_order(items: Iterable[T]) -> list[T]:
@@ -180,6 +197,42 @@ class PrepAgentRunner:
     def __init__(self, config: ExperimentConfig) -> None:
         self.config = config
         self.logger = get_logger("prep_agent")
+        if not PREP_PROMPT_DIR.is_dir() or not PREP_TEMPLATE_DIR.is_dir():
+            raise FileNotFoundError(
+                f"PrepAgent prompt assets not found under {PREP_PROMPT_DIR}"
+            )
+        self.profile_agent = ProfileAgent(
+            config.model_name,
+            prompt_dir=PREP_PROMPT_DIR,
+            template_dir=PREP_TEMPLATE_DIR,
+            profile_prompt_name="prep_profile",
+            profile_template_name="prep_profile.jinja2",
+            decide_prompt_name="prep_profile_decide",
+            decide_template_name="prep_profile_decide.jinja2",
+            summarize_prompt_name="prep_profile_summarize",
+            summarize_template_name="prep_profile_summarize.jinja2",
+        )
+        self.clarify_agent = ClarifyAgent(
+            config.model_name,
+            prompt_dir=PREP_PROMPT_DIR,
+            template_dir=PREP_TEMPLATE_DIR,
+            prompt_name="prep_interact",
+            template_name="prep_interact.jinja2",
+        )
+        self.code_agent = CodeAgent(
+            config.model_name,
+            prompt_dir=PREP_PROMPT_DIR,
+            template_dir=PREP_TEMPLATE_DIR,
+            prompt_name="prep_code",
+            template_name="prep_code.jinja2",
+        )
+        self.flow_agent = FlowAgent(
+            model_name=config.model_name,
+            prompt_dir=PREP_PROMPT_DIR,
+            template_dir=PREP_TEMPLATE_DIR,
+            prompt_name="prep_flow",
+            template_name="prep_flow.jinja2",
+        )
 
     def _run_profile_stage(
         self,
@@ -199,6 +252,7 @@ class PrepAgentRunner:
             input_dir=input_dir,
             inputs=inputs,
             inputs_preview=inputs_preview,
+            profile_agent=self.profile_agent,
         )
 
     def _run_clarify_stage(
@@ -209,6 +263,7 @@ class PrepAgentRunner:
         query_text: str,
         inputs_preview: Dict[str, Any],
         amb_kb_json: Dict[str, Any],
+        profile_summary: str,
     ) -> Dict[str, Any]:
         clarify_root = output_root / "clarify"
         clarify_root.mkdir(parents=True, exist_ok=True)
@@ -223,11 +278,11 @@ class PrepAgentRunner:
         )
         session = simulator_api.start_session(case_id=case_dir.name, run_id=run_id)
 
-        clarifier = ClarifyAgent(self.config.model_name)
         session_state = {
             "task_dir": str(case_dir),
             "query": query_text,
             "inputs_preview": inputs_preview,
+            "profile_summary": profile_summary,
         }
 
         qa_history: list[Dict[str, Any]] = []
@@ -252,7 +307,7 @@ class PrepAgentRunner:
                 for item in qa_history
             ]
 
-            action, raw, messages = clarifier.generate_action(
+            action, raw, messages = self.clarify_agent.generate_action(
                 session_state,
                 qa_history=qa_for_prompt,
                 runtime_feedback=runtime_feedback,
@@ -447,7 +502,7 @@ class PrepAgentRunner:
 
     def run_case(self, case_dir: Path) -> Dict[str, Any]:
         case_view = load_internal_case_view(case_dir, require_reference_solution=True)
-        output_root = get_output_path(case_dir, self.config)
+        output_root = get_prepagent_output_path(case_dir, self.config)
         # Always reset per-case output to avoid reusing stale artifacts (especially flow_cand).
         if output_root.exists():
             shutil.rmtree(output_root)
@@ -470,6 +525,7 @@ class PrepAgentRunner:
             query_text=case_view.query_text,
             inputs_preview=inputs_preview,
             amb_kb_json=case_view.amb_kb_json,
+            profile_summary=profile_summary,
         )
 
         code_session_state = {
@@ -487,6 +543,7 @@ class PrepAgentRunner:
             config=self.config,
             session_state=code_session_state,
             output_root=output_root,
+            code_agent=self.code_agent,
         )
 
         solution_dir = output_root / "solution"
@@ -517,6 +574,7 @@ class PrepAgentRunner:
                     config=self.config,
                     output_root=flow_output_root,
                     solution_text=solution_text,
+                    flow_agent=self.flow_agent,
                 )
                 flow_ran = True
                 flow_passed = bool(flow_result.get("passed", False))
@@ -643,7 +701,7 @@ def main() -> None:
         except Exception as exc:
             failed += 1
             logger.error("[%s] failed: %s", case_dir.name, exc)
-            output_root = get_output_path(case_dir, config)
+            output_root = get_prepagent_output_path(case_dir, config)
             solution_dir = output_root / "solution"
             solution_dir.mkdir(parents=True, exist_ok=True)
             write_json(

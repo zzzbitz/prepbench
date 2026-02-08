@@ -102,6 +102,10 @@ Integration contract:
 Reference implementation:
 - `examples/prep_agent/run_prepagent.py`
 - `examples/prep_agent/README.md`
+- `examples/prep_agent/prompts/`
+
+PrepAgent output root is isolated from benchmark run modes:
+- `@output/<model_info>/prepagent/case_xxx/solution/...`
 
 ## Reproduce Paper Experiments (Secondary Path)
 

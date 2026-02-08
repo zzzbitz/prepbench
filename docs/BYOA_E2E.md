@@ -31,9 +31,19 @@ PrepBench provides a reference `PrepAgent` pipeline for E2E:
 ./scripts/run_prepagent.sh --case 1 --model openai/gpt-5.2
 ```
 
+PrepAgent writes to an isolated root:
+- `@output/<model_info>/prepagent/case_xxx/solution/...`
+
+And can be evaluated with:
+
+```bash
+python -m evaluate.batch --results-root @output/<model_info>/prepagent --candidate-kind auto
+```
+
 Source:
 - `examples/prep_agent/run_prepagent.py`
 - `examples/prep_agent/README.md`
+- `examples/prep_agent/prompts/` (PrepAgent-owned prompts/templates)
 
 ## 1) Public Inputs Per Case
 

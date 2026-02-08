@@ -17,6 +17,7 @@ def run_flow_impl(
     config: ExperimentConfig,
     output_root: Path,
     solution_text: str,
+    flow_agent: Optional[FlowAgent] = None,
 ) -> Dict[str, Any]:
     """Shared flow execution logic for flow mode and e2e."""
     from py2flow.errors import FlowExecutionError, FlowValidationError
@@ -47,7 +48,7 @@ def run_flow_impl(
     }
 
     max_rounds = getattr(cfg, "max_rounds_debug", 3)
-    flow_agent = FlowAgent(model_name=cfg.model_name)
+    flow_agent = flow_agent or FlowAgent(model_name=cfg.model_name)
 
     feedback = None
     stopped_reason = "unknown"

@@ -74,12 +74,13 @@ def run_profile_phase(
     input_dir: Path,
     inputs: list[str],
     inputs_preview: Dict[str, Any],
+    profile_agent: Optional[ProfileAgent] = None,
 ) -> dict[str, Any]:
     """Two-round profile flow with LLM decision."""
     profile_root = output_root / "profile"
     profile_root.mkdir(parents=True, exist_ok=True)
 
-    profile_agent = ProfileAgent(config.model_name)
+    profile_agent = profile_agent or ProfileAgent(config.model_name)
     executor = CodeExecutor()
     input_files = {p.name: p for p in sorted(input_dir.glob("*.csv"))}
 

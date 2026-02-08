@@ -17,16 +17,26 @@ _JSON_CODE_FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)```", re.MULTILINE)
 class FlowAgent:
     """Agent that generates flow.json DAG via LLM."""
 
-    def __init__(self, model_name: Optional[str] = None):
+    def __init__(
+        self,
+        model_name: Optional[str] = None,
+        *,
+        prompt_dir: Optional[Path] = None,
+        template_dir: Optional[Path] = None,
+        prompt_name: str = "flow_agent",
+        template_name: str = "flow_agent.jinja2",
+    ):
         self.model_name = model_name or get_model_name()
+        self.prompt_dir = prompt_dir
+        self.prompt_name = prompt_name
         # Setup Jinja2 environment
-        template_dir = Path(__file__).parent / "prompts" / "templates"
+        tmpl_dir = template_dir or (Path(__file__).parent / "prompts" / "templates")
         self.jinja_env = Environment(
-            loader=FileSystemLoader(template_dir),
+            loader=FileSystemLoader(tmpl_dir),
             trim_blocks=True,
             lstrip_blocks=True,
         )
-        self.template = self.jinja_env.get_template("flow_agent.jinja2")
+        self.template = self.jinja_env.get_template(template_name)
 
     def _collect_context(self, session_state: Dict[str, Any]) -> Dict[str, Any]:
         """Collect context for prompt rendering."""
@@ -44,8 +54,9 @@ class FlowAgent:
     ) -> str:
         """Builds the prompt using the Jinja2 template."""
         cfg = load_prompt_yaml(
-            "flow_agent",
+            self.prompt_name,
             required_keys=("system", "core_guidelines", "operator_definitions"),
+            prompt_dir=self.prompt_dir,
         )
 
         return self.template.render(

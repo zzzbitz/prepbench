@@ -64,12 +64,13 @@ def run_code_phase(
     config: ExperimentConfig,
     session_state: Dict[str, Any],
     output_root: Path,
+    code_agent: Optional[CodeAgent] = None,
 ) -> Dict[str, Any]:
     """Run code generation phase with retry on execution errors."""
     rounds_root = output_root / "rounds"
     rounds_root.mkdir(parents=True, exist_ok=True)
 
-    coder = CodeAgent(config.model_name)
+    coder = code_agent or CodeAgent(config.model_name)
     executor = CodeExecutor()
 
     prev_code: Optional[str] = None

@@ -20,12 +20,31 @@ class ProfileAgent:
     3. summarize() - If round 2 executed, generate final summary
     """
 
-    def __init__(self, model_name: str) -> None:
+    def __init__(
+        self,
+        model_name: str,
+        *,
+        prompt_dir: Path | None = None,
+        template_dir: Path | None = None,
+        profile_prompt_name: str = "profile_agent",
+        profile_template_name: str = "profile_agent.jinja2",
+        decide_prompt_name: str = "profile_agent_decide",
+        decide_template_name: str = "profile_agent_decide.jinja2",
+        summarize_prompt_name: str = "profile_agent_summarize",
+        summarize_template_name: str = "profile_agent_summarize.jinja2",
+    ) -> None:
         self.model_name = model_name
         self._llm = None
-        template_dir = Path(__file__).parent / "prompts" / "templates"
+        self.prompt_dir = prompt_dir
+        tmpl_dir = template_dir or (Path(__file__).parent / "prompts" / "templates")
+        self.profile_prompt_name = profile_prompt_name
+        self.profile_template_name = profile_template_name
+        self.decide_prompt_name = decide_prompt_name
+        self.decide_template_name = decide_template_name
+        self.summarize_prompt_name = summarize_prompt_name
+        self.summarize_template_name = summarize_template_name
         self.jinja_env = Environment(
-            loader=FileSystemLoader(template_dir),
+            loader=FileSystemLoader(tmpl_dir),
             trim_blocks=True,
             lstrip_blocks=True,
         )
@@ -37,9 +56,13 @@ class ProfileAgent:
                 raise RuntimeError("LLM configuration not found.")
         return self._llm
 
-    def _render_prompt(self, name: str, context: Dict[str, Any]) -> str:
-        prompt_cfg = load_prompt_yaml(name, required_keys=("system", "guidelines"))
-        template = self.jinja_env.get_template(f"{name}.jinja2")
+    def _render_prompt(self, prompt_name: str, template_name: str, context: Dict[str, Any]) -> str:
+        prompt_cfg = load_prompt_yaml(
+            prompt_name,
+            required_keys=("system", "guidelines"),
+            prompt_dir=self.prompt_dir,
+        )
+        template = self.jinja_env.get_template(template_name)
         return template.render(
             system_prompt_text=prompt_cfg["system"],
             guidelines_text=prompt_cfg["guidelines"],
@@ -59,7 +82,8 @@ class ProfileAgent:
             (code, raw_response, messages)
         """
         prompt_content = self._render_prompt(
-            "profile_agent",
+            self.profile_prompt_name,
+            self.profile_template_name,
             {
                 "query_md": session_state.get("query", ""),
                 "task_dir": session_state.get("task_dir", ""),
@@ -102,7 +126,8 @@ class ProfileAgent:
             stderr_section = f"- Stderr:\n```\n{stderr[:1000]}\n```"
         
         prompt_content = self._render_prompt(
-            "profile_agent_decide",
+            self.decide_prompt_name,
+            self.decide_template_name,
             {
                 "query_md": session_state.get("query", ""),
                 "task_dir": session_state.get("task_dir", ""),
@@ -206,7 +231,8 @@ class ProfileAgent:
         r2_stdout = (round2_result.get("stdout") or "")[:2000]
         
         prompt_content = self._render_prompt(
-            "profile_agent_summarize",
+            self.summarize_prompt_name,
+            self.summarize_template_name,
             {
                 "query_md": session_state.get("query", ""),
                 "round1_status": r1_status,

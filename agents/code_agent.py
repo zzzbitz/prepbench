@@ -16,12 +16,24 @@ from core.orchestration.mode_spec import get_mode_spec
 
 
 class CodeAgent:
-    def __init__(self, model_name: str, data_head: Optional[DataHead] = None):
+    def __init__(
+        self,
+        model_name: str,
+        data_head: Optional[DataHead] = None,
+        *,
+        prompt_dir: Optional[Path] = None,
+        template_dir: Optional[Path] = None,
+        prompt_name: str = "code_agent",
+        template_name: str = "code_agent.jinja2",
+    ):
         self.model_name = model_name
         self.data_head = data_head or DataHead()
+        self.prompt_dir = prompt_dir
+        self.prompt_name = prompt_name
         # Setup Jinja2 environment
-        template_dir = Path(__file__).parent / "prompts" / "templates"
-        self.jinja_env = Environment(loader=FileSystemLoader(template_dir), trim_blocks=True, lstrip_blocks=True)
+        tmpl_dir = template_dir or (Path(__file__).parent / "prompts" / "templates")
+        self.jinja_env = Environment(loader=FileSystemLoader(tmpl_dir), trim_blocks=True, lstrip_blocks=True)
+        self.template_name = template_name
 
     def _collect_context(self, session_state: Dict[str, Any]) -> Dict:
         mode = str(session_state.get("run_mode", ""))
@@ -57,9 +69,12 @@ class CodeAgent:
 
     def _build_prompt(self, ctx: Dict, feedback: Optional[Dict[str, Any]] = None) -> str:
         """Builds the prompt using the Jinja2 template."""
-        prompt_name = "code_agent"
-        cfg = load_prompt_yaml(prompt_name, required_keys=("system", "guidelines"))
-        template = self.jinja_env.get_template("code_agent.jinja2")
+        cfg = load_prompt_yaml(
+            self.prompt_name,
+            required_keys=("system", "guidelines"),
+            prompt_dir=self.prompt_dir,
+        )
+        template = self.jinja_env.get_template(self.template_name)
 
         # Render the template with all the context and feedback
         return template.render(
