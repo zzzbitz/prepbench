@@ -1,0 +1,8 @@
+cff-version: 1.2.0
+title: "PrepBench: How Far Are We from Natural-Language-Driven Data Preparation?"
+message: "If you use PrepBench in your research, please cite this repository and the associated paper."
+type: software
+authors:
+  - name: "PrepBench Team"
+repository-code: "https://github.com/zzzbitz/prepbench"
+license: "MIT"

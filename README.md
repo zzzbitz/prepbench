@@ -107,7 +107,7 @@ Reference implementation:
 
 `run.py` is the experiment reproducer for internal multi-mode runs.
 
-Run one case:
+Quick example:
 
 ```bash
 python run.py --case 1 --run_mode orig --model openai/gpt-5.2
@@ -124,17 +124,8 @@ Mode scripts:
 ./scripts/run_e2e.sh --case 1 --model openai/gpt-5.2
 ```
 
-Run modes:
-- `orig`: raw query + profile + code
-- `disamb`: disambiguated/full query + profile + code
-- `interact`: raw query + clarify + profile + code
-- `disamb_only`: disambiguated/full query + code (no profile)
-- `e2e`: interact pipeline + code-to-flow
-- `flow`: flow-only execution (requires `simulator/assets/solutions/case_XXX.py`)
-
-Notes:
-- `e2e` can run directly and reuses compatible interact artifacts when available.
-- If `experiment.run_mode` and default model are set in config, you can omit CLI `--run_mode` and `--model`.
+Full reproduction guide:
+- `docs/REPRO.md`
 
 ## Output Layout
 
@@ -172,3 +163,8 @@ Flow mode and user simulator alignment require benchmark reference solutions:
   - Prepare `simulator/assets/solutions/case_XXX.py` first. For access, contact `j1n9zhe@gmail.com`.
 - `No candidate directory with CSV outputs found` during batch evaluation:
   - The run did not produce result CSV files under `solution/cand` or `solution/flow_cand` for that case.
+
+## Contributing and Citation
+
+- Contribution guide: `CONTRIBUTING.md`
+- Citation metadata: `CITATION.cff`
