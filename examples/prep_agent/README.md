@@ -1,43 +1,10 @@
-# PrepAgent Reference (E2E)
+# Deprecated Path
 
-This is a reference implementation for participants who want to build and evaluate their own agent framework on PrepBench.
+PrepAgent has been moved to `methods/prepagent/`.
 
-Pipeline order is fixed and self-contained in this folder:
-1. profile
-2. clarify/interact (via local user simulator API)
-3. code generation + execution
-4. flow generation + execution (only when code outputs exist)
+Use:
+- `methods/prepagent/run_prepagent.py`
+- `methods/prepagent/README.md`
+- `methods/prepagent/prompts/`
 
-## Folder Structure
-
-- `run_prepagent.py`: entrypoint and pipeline orchestration.
-- `prompts/*.yaml`: PrepAgent-owned prompt configs.
-- `prompts/templates/*.jinja2`: PrepAgent-owned prompt templates.
-  - `prep_profile*`: profile stage
-  - `prep_interact*`: interact stage
-  - `prep_code*`: code stage
-  - `prep_flow*`: flow stage
-
-PrepAgent does not reuse the benchmark cache/reuse policy in `run.py`.
-Each case run starts from a clean output directory to keep behavior deterministic for external users.
-
-## Run
-
-```bash
-./scripts/run_prepagent.sh --case 1 --model openai/gpt-5.2
-```
-
-Outputs follow the standard evaluation layout under `@output/<model_info>/prepagent/case_xxx/solution/`:
-- `cand/*.csv` (code track)
-- `flow_cand/*.csv` (flow track)
-
-## Evaluate
-
-```bash
-python -m evaluate.batch --results-root @output/<model_info>/prepagent --candidate-kind auto
-```
-
-## Notes
-
-- This reference implementation reuses core executors/parsers, but uses its own prompt assets under `examples/prep_agent/prompts`.
-- User simulator and flow mode require reference solutions in `simulator/assets/solutions/case_xxx.py`.
+`examples/prep_agent/run_prepagent.py` remains as a compatibility wrapper.

@@ -4,4 +4,4 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT_DIR}"
 
-python examples/prep_agent/run_prepagent.py "$@"
+python methods/prepagent/run_prepagent.py "$@"

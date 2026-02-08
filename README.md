@@ -98,11 +98,12 @@ Public per-case inputs:
 
 Integration contract:
 - `docs/BYOA_E2E.md`
+- `docs/ARCHITECTURE.md`
 
 Reference implementation:
-- `examples/prep_agent/run_prepagent.py`
-- `examples/prep_agent/README.md`
-- `examples/prep_agent/prompts/`
+- `methods/prepagent/run_prepagent.py`
+- `methods/prepagent/README.md`
+- `methods/prepagent/prompts/`
 
 PrepAgent output root is isolated from benchmark run modes:
 - `@output/<model_info>/prepagent/case_xxx/solution/...`

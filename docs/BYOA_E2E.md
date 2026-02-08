@@ -41,9 +41,9 @@ python -m evaluate.batch --results-root @output/<model_info>/prepagent --candida
 ```
 
 Source:
-- `examples/prep_agent/run_prepagent.py`
-- `examples/prep_agent/README.md`
-- `examples/prep_agent/prompts/` (PrepAgent-owned prompts/templates)
+- `methods/prepagent/run_prepagent.py`
+- `methods/prepagent/README.md`
+- `methods/prepagent/prompts/` (PrepAgent-owned prompts/templates)
 
 ## 1) Public Inputs Per Case
 

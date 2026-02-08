@@ -24,6 +24,15 @@ dev = []
 
 [tool.setuptools]
 packages = [
+  "prepbench",
+  "prepbench.agents",
+  "prepbench.config",
+  "prepbench.core",
+  "prepbench.evaluate",
+  "prepbench.llm_connect",
+  "prepbench.py2flow",
+  "prepbench.simulator",
+  "prepbench.data_synthesis",
   "agents",
   "config",
   "core",
@@ -35,3 +44,6 @@ packages = [
   "py2flow.operators",
   "simulator",
 ]
+
+[tool.setuptools.package-dir]
+prepbench = "src/prepbench"
