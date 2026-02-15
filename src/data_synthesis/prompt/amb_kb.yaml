@@ -117,62 +117,58 @@ system_prompt: |
   ----------------------------------------------------------------------------
   Taxonomy (kind) — Choose EXACTLY ONE
   ----------------------------------------------------------------------------
-  "D1 Schema Linking Ambiguity"
-  "D2 Join Key Ambiguity"
-  "C1 Domain-Specific Rule Ambiguity"
-  "C2 Calculation Formula Ambiguity"
-  "O1 Boundary Condition Ambiguity"
-  "O2 Rule Coverage Ambiguity"
-  "O3 Rule Conflict Ambiguity"
+  "Single-table reference"
+  "Multi-table alignment"
+  "Group-level concept"
+  "Row-level concept"
+  "Operation incomplete"
+  "Operation inconsistent"
+  "Operation boundary"
 
   ----------------------------------------------------------------------------
   Classification Decision Tree (MUST USE; DO NOT GUESS)
   ----------------------------------------------------------------------------
-  Φ_D Data Reference — “Where is the data?”
-  - D1 Schema Linking:
-    * Question: which concrete table/column/field does a phrase refer to?
-    * Multiple plausible schema targets → D1.
-  - D2 Join Key:
-    * Question: once tables/columns are fixed, how are rows aligned across tables?
-    * Multiple plausible join keys / match predicates / alignment schemes → D2.
-    * If alignment is implemented as cross-join + filter, anchor to the FILTER node and classify as D2.
+  Φ_D Data Interpretation — “Which data is referenced?”
+  - Single-table reference:
+    * Question: which concrete column/value in a table does a phrase refer to?
+    * Multiple plausible schema targets in one table → Single-table reference.
+  - Multi-table alignment:
+    * Question: across tables, how are rows aligned?
+    * Multiple plausible join keys / match predicates / alignment schemes → Multi-table alignment.
+    * If alignment is implemented as cross-join + filter, anchor to the FILTER node and classify as Multi-table alignment.
 
-  Φ_C Concept Definition — “What does it mean?”
-  - C1 Domain-Specific Rule:
-    * Meaning depends on an external rulebook/industry policy; not specified.
-  - C2 Calculation Formula:
-    * Named metric admits multiple standard formulas or aggregation semantics:
-      - denominator choice, distinct vs count, pre-aggregate vs post-aggregate grain, etc.
+  Φ_C Concept Interpretation — “What does the concept mean?”
+  - Group-level concept:
+    * Group-level metric semantics are unclear (aggregation grain/formula/denominator/date basis).
+  - Row-level concept:
+    * Row-level condition/label semantics are unclear (thresholds/criteria/class boundaries).
 
-  Φ_O Operational Policy — “How to execute edge cases?”
-  - O1 Boundary Condition:
-    * Cutoffs, endpoints, inclusive/exclusive intervals, off-by-one, bin boundaries,
-      rounding precision, or order-of-operations that changes results.
-    * IMPORTANT: multi-step order that affects results (e.g., “ceil then round-to-10”) must be captured as O1.
-  - O2 Rule Coverage:
-    * Zero-match / uncovered inputs / parse failures / missing delimiters:
-      drop vs keep, default/NA, fallback path, unmatched join policy.
-  - O3 Rule Conflict:
-    * Multi-match / conflicting rules:
-      priority, “longest/most recent”, first-match-wins, tie-breaking policies.
+  Φ_O Operational Interpretation — “How are edge cases handled?”
+  - Operation incomplete:
+    * Some inputs match none of the stated rules; fallback/drop/default behavior is unclear.
+  - Operation inconsistent:
+    * Some inputs match multiple rules; precedence/merge/tie-breaking policy is unclear.
+  - Operation boundary:
+    * Threshold and endpoint behavior is unclear (inclusive/exclusive cutoffs, exact equality, bin boundaries, rounding boundaries).
 
-  Mandatory split rule (D2 vs O3):
-  - “What counts as a match / how to align rows” → D2
-  - “Given multiple matches, which one wins” → O3
+  Mandatory split rule (Multi-table alignment vs Operation inconsistent):
+  - “What counts as a match / how to align rows” → Multi-table alignment
+  - “Given multiple matches, which one wins” → Operation inconsistent
   If both exist, split into two entries (possibly anchored to different nodes).
 
   Date/time normalization guidance (NOT a special case; apply the tree):
-  - Range truncation / inclusive endpoints → O1
-  - Year-only defaults / suffix handling / parse fallback chain → O2
-  - Parse-fail → drop/default/NA → O2
-  - Do NOT classify date normalization as C2 unless it is explicitly a numeric metric formula choice.
+  - Range truncation / inclusive endpoints → Operation boundary
+  - Year-only defaults / suffix handling / parse fallback chain → Operation incomplete
+  - Parse-fail → drop/default/NA → Operation incomplete
+  - Conflicting parser candidates with unspecified precedence → Operation inconsistent
+  - Do NOT classify date normalization as Group-level concept unless it is truly a group-level metric definition issue.
 
   ----------------------------------------------------------------------------
   Field-Filling Rules (STRICT)
   ----------------------------------------------------------------------------
   id
   - Purpose: stable, unique (within this case), readable, sortable.
-  - Format: "{index}_{short_snake_case_mnemonic}" (e.g., "1_O1_rounding_sequence").
+  - Format: "{index}_{short_snake_case_mnemonic}" (e.g., "1_rounding_sequence").
   - Do NOT embed node_id in id. Do NOT use random hashes.
 
   kind

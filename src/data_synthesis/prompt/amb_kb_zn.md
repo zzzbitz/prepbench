@@ -40,7 +40,7 @@ G1) 每条 entry 只表达一个独立分叉维度。
 3) 输出（硬约束）
 ────────────────────────────────────────
 O0) 只输出 JSON（不要 markdown/解释/多余文本）。
-O1) JSON 结构必须严格等于：
+R1) JSON 结构必须严格等于：
 
 {
   "ambiguities": [
@@ -55,11 +55,11 @@ O1) JSON 结构必须严格等于：
   ]
 }
 
-O2) 每条 entry 必须恰好包含 6 个字段：
+R2) 每条 entry 必须恰好包含 6 个字段：
     - 固定字段：id, kind, node_id, op, ref
     - 二选一字段：source_text 或 intent（互斥）
     不得新增字段；不得嵌套对象。
-O3) 若没有任何有效歧义，输出：{ "ambiguities": [] }
+R3) 若没有任何有效歧义，输出：{ "ambiguities": [] }
 
 ────────────────────────────────────────
 4) 生成流程（必须按顺序执行）
@@ -97,13 +97,13 @@ Step 5) 填充 6 字段并输出 JSON
 - 不要用随机串；不要把 node_id 硬编码进 id（保持稳定性与可重排性）。
 
 [kind]（必须 EXACTLY 选其一，严格匹配）
-- "D1 Schema Linking Ambiguity"
-- "D2 Join Key Ambiguity"
-- "C1 Domain-Specific Rule Ambiguity"
-- "C2 Calculation Formula Ambiguity"
-- "O1 Boundary Condition Ambiguity"
-- "O2 Rule Coverage Ambiguity"
-- "O3 Rule Conflict Ambiguity"
+- "Single-table reference"
+- "Multi-table alignment"
+- "Group-level concept"
+- "Row-level concept"
+- "Operation incomplete"
+- "Operation inconsistent"
+- "Operation boundary"
 
 [node_id]
 - 必须是 flow.json 中真实存在的节点 ID（完全匹配）。
@@ -130,50 +130,47 @@ Step 5) 填充 6 字段并输出 JSON
 6) 歧义分类依据（必须按此判别并写入 kind）
 ────────────────────────────────────────
 
-Φ_D Data Reference Ambiguity（Where is the data?）
-D1 Schema Linking Ambiguity
-- 核心：自然语言短语 → (表/列) 的映射不唯一。
-- 判别问句：这句话到底指的是哪张表/哪一列？若有多个合理候选 → D1。
+Φ_D Data Interpretation（Where is the data?）
+Single-table reference
+- 核心：自然语言短语在单表内无法唯一映射到具体列/值。
+- 判别问句：这句话到底指的是单表中的哪一列/哪一类值？若有多个合理候选 → Single-table reference。
 
-D2 Join Key Ambiguity
-- 核心：表/列已定，但跨表如何对齐行（join key / match scheme）不唯一。
-- 判别问句：用什么 key/匹配条件把两表行对齐？若多种合理方案 → D2。
-- 注意与 D1 的硬边界：
-  - 选哪一列/哪张表 → D1
-  - 列/表已定，仍不知如何对齐行 → D2
+Multi-table alignment
+- 核心：多表任务中，跨表行对齐方式（join key / match predicate）不唯一。
+- 判别问句：两表（或多表）用什么字段对齐？若多种合理方案 → Multi-table alignment。
+- 注意与 Single-table reference 的边界：
+  - 选哪一列/哪一类字段 → Single-table reference
+  - 列已定，仍不知如何对齐行 → Multi-table alignment
 
-Φ_C Concept Definition Ambiguity（What does it mean?）
-C1 Domain-Specific Rule Ambiguity
-- 核心：概念含义依赖外部规则书/行业标准/企业 policy，未指明采用哪套。
-- 判别问句：要遵循哪套规则/制度口径？若不明确且会分叉 → C1。
+Φ_C Concept Interpretation（What does it mean?）
+Group-level concept
+- 核心：组层级概念不明确（聚合粒度、分母、加权、日期口径等）。
+- 判别问句：该组层级指标的定义/公式是否有多个合理版本？若是 → Group-level concept。
 
-C2 Calculation Formula Ambiguity
-- 核心：同名指标存在多种标准数学公式/聚合口径，未指明采用哪一个。
-- 判别问句：这个量的公式/分母/聚合层级/加权方式到底是哪一个？若多种合理公式 → C2。
-- 与 C1 的硬边界：
-  - 选择外部规则/制度 → C1
-  - 同一规则下的数学公式/聚合口径 → C2
+Row-level concept
+- 核心：行层级标签/条件定义不明确（阈值、规则、判定条件）。
+- 判别问句：该行是否满足条件的标准是否有多个合理版本？若是 → Row-level concept。
 
-Φ_O Operational Policy Ambiguity（How to execute edge cases?）
-O1 Boundary Condition Ambiguity
-- 核心：边界值/端点包含性/并列 tie 的处理不明确（< vs ≤, inclusive/exclusive, cutoff ties）。
-- 判别问句：恰好等于阈值算不算？分桶端点归哪档？并列怎么断？不明确 → O1。
+Φ_O Operational Interpretation（How to execute edge cases?）
+Operation incomplete
+- 核心：有输入命中 0 条规则，fallback（drop/keep/default/NA）未指定。
+- 判别问句：不匹配任何规则时怎么办？不明确 → Operation incomplete。
 
-O2 Rule Coverage Ambiguity
-- 核心：规则意图覆盖输入域，但存在命中 0 条规则的输入；未说明 drop/default/NA/fallback。
-- 判别问句：不匹配任何规则的行怎么办？不明确 → O2。
+Operation inconsistent
+- 核心：有输入命中多条规则，冲突消解（priority/first-wins/all-apply）未指定。
+- 判别问句：同时命中多条规则时怎么办？不明确 → Operation inconsistent。
 
-O3 Rule Conflict Ambiguity
-- 核心：存在命中 ≥2 条规则的输入；未说明冲突消解（priority/first-wins/all-apply）。
-- 判别问句：同时命中多条规则怎么办？不明确 → O3。
+Operation boundary
+- 核心：边界值处理不明确（阈值等号、区间端点包含性、分桶边界、边界舍入）。
+- 判别问句：恰好等于阈值算不算？端点是否包含？不明确 → Operation boundary。
 
-O2 vs O3 的硬区分：
-- 命中 0 条规则 → O2
-- 命中 ≥2 条规则 → O3
+Operation incomplete vs Operation inconsistent 的硬区分：
+- 命中 0 条规则 → Operation incomplete
+- 命中 ≥2 条规则 → Operation inconsistent
 
-特别提醒：D2 与 O3 常同时出现，但必须拆条（严禁合并）：
-- D2：定义对齐方案本身（join key / match predicate 是什么）
-- O3：在匹配方案已确定后，多候选命中时如何裁决（priority/longest/first/last/max）
+特别提醒：Multi-table alignment 与 Operation inconsistent 常同时出现，但必须拆条（严禁合并）：
+- Multi-table alignment：定义“如何匹配/如何对齐”本身
+- Operation inconsistent：在匹配方案已确定后，多个候选都命中时如何裁决
 
 ────────────────────────────────────────
 7) 候选过滤（避免噪声）

@@ -34,14 +34,15 @@ MAX_CHARS_PER_LINE_THRESHOLD = 1500  # Lines exceeding this are considered hard 
 
 
 ALLOWED_KINDS = {
-    "D1 Schema Linking Ambiguity",
-    "D2 Join Key Ambiguity",
-    "C1 Domain-Specific Rule Ambiguity",
-    "C2 Calculation Formula Ambiguity",
-    "O1 Boundary Condition Ambiguity",
-    "O2 Rule Coverage Ambiguity",
-    "O3 Rule Conflict Ambiguity",
+    "Single-table reference",
+    "Multi-table alignment",
+    "Group-level concept",
+    "Row-level concept",
+    "Operation incomplete",
+    "Operation inconsistent",
+    "Operation boundary",
 }
+OLD_TAXONOMY_ID_PREFIX_PATTERN = re.compile(r"^\d+_[DCO][123](_|$)")
 
 
 def _read_json(path: Path) -> tuple[dict[str, Any] | None, str | None]:
@@ -55,6 +56,9 @@ def _read_json(path: Path) -> tuple[dict[str, Any] | None, str | None]:
 
 
 def _load_flow_nodes(flow_path: Path) -> tuple[dict[str, Any] | None, str | None]:
+    if not flow_path.exists():
+        # Some dataset layouts do not ship flow.json with each case.
+        return None, None
     data, err = _read_json(flow_path)
     if err:
         return None, f"flow.json {err}"
@@ -193,6 +197,10 @@ def _validate_entry(
 
     entry_id = entry.get("id")
     if isinstance(entry_id, str) and entry_id:
+        if OLD_TAXONOMY_ID_PREFIX_PATTERN.match(entry_id):
+            issues.append(
+                f"entry[{idx}] id uses deprecated taxonomy prefix: {entry_id}"
+            )
         if entry_id in seen_ids:
             issues.append(f"entry[{idx}] duplicate id: {entry_id}")
         else:
@@ -314,7 +322,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    repo_root = Path(__file__).resolve().parents[1]
+    repo_root = Path(__file__).resolve().parents[2]
     data_dir = Path(args.data_dir) if args.data_dir else (repo_root / "data")
     if not data_dir.exists():
         print(f"[ERROR] data dir not found: {data_dir}")

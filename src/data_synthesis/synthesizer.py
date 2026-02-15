@@ -101,7 +101,7 @@ class Synthesizer:
         ]
         return client.generate(messages, temperature=temperature, max_tokens=max_tokens, timeout=timeout)
 
-    def generate_query_full(self, query: str, code: str, flow: str) -> str:
+    def generate_query_full(self, query: str, code: str, flow: str, *, feedback: str = "") -> str:
         user_prompt = (
             "[query_raw]\n" + query + "\n\n" +
             "[solution.py]\n```python\n" + code + "\n```\n\n" +
@@ -110,6 +110,8 @@ class Synthesizer:
             "Return either 'no ambiguity' or the rewritten query_full starting with '## Context'. "
             "Do not add any commentary or code fences around the output."
         )
+        if feedback.strip():
+            user_prompt += "\n\n[revision_feedback]\n" + feedback.strip() + "\n"
         final_full = self._call_llm(
             self.client_full,
             self.rewriter_system_prompt,
@@ -120,6 +122,44 @@ class Synthesizer:
         ).strip()
 
         return final_full
+
+    def classify_disamb_failure(
+        self,
+        *,
+        query: str,
+        query_full: str,
+        failure_context: str,
+    ) -> Dict[str, Any]:
+        system_prompt = (
+            "You classify failure root causes for disambiguated request validation.\n"
+            "Return strict JSON with keys: category, reason.\n"
+            "Allowed category values only: ambiguity, data_irregular, coder_fail."
+        )
+        user_prompt = (
+            "[query_raw]\n" + query + "\n\n"
+            "[query_full_candidate]\n" + query_full + "\n\n"
+            "[failure_context]\n" + failure_context + "\n\n"
+            "Task: choose one category. Use 'ambiguity' only when query_full still allows multiple reasonable interpretations. "
+            "Use 'data_irregular' when input data pathology is primary. Otherwise use 'coder_fail'. "
+            "Output JSON only."
+        )
+        response = self._call_llm(
+            self.client_full,
+            system_prompt,
+            user_prompt,
+            temperature=0.0,
+            max_tokens=500,
+            timeout=self.full_cfg["timeout"],
+        )
+        parsed = json.loads(response)
+        if not isinstance(parsed, dict):
+            raise ValueError("classification response must be JSON object")
+        category = str(parsed.get("category", "")).strip()
+        if category not in {"ambiguity", "data_irregular", "coder_fail"}:
+            raise ValueError(f"invalid category: {category}")
+        if "reason" not in parsed:
+            parsed["reason"] = ""
+        return parsed
 
 
     def generate_ambiguities(self, query: str, code: str, query_full: str, flow: str) -> Dict[str, Any]:
